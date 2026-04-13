@@ -1,8 +1,6 @@
-flask==3.1.1
-flask-cors==5.0.1
-gunicorn==23.0.0
+flask>=3.0
+flask-cors>=5.0
+gunicorn>=21.0
 chromadb==1.5.7
-langchain-chroma==0.2.2
-langchain-openai==1.1.7
-langchain-core==1.2.28
-openai==2.15.0
+langchain-chroma>=0.2.2
+langchain-openai>=1.1.7
