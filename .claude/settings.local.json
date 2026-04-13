@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip show:*)",
+      "Bash(.venv\\\\Scripts\\\\pip show:*)",
+      "Bash(.venv\\\\Scripts\\\\pip freeze:*)",
+      "Bash(cmd /c \".venv\\\\Scripts\\\\pip.exe freeze 2>&1\")",
+      "Bash(cmd /c \".venv\\\\Scripts\\\\pip.exe freeze\")",
+      "Bash(cmd /c \"C:\\\\Users\\\\Horrible\\\\Code\\\\omni-collection\\\\.venv\\\\Scripts\\\\pip.exe list --format=freeze\")",
+      "Bash(cmd /c \"dir C:\\\\Users\\\\Horrible\\\\Code\\\\omni-collection\\\\.venv\\\\Scripts\\\\\")",
+      "Bash(pip list:*)",
+      "Bash(heroku --version)",
+      "Bash(heroku create:*)",
+      "Bash(heroku logs:*)",
+      "Bash(curl -s https://whispering-shelf-66949-6daeee3e1a3e.herokuapp.com/health)",
+      "Bash(curl -s \"https://whispering-shelf-66949-6daeee3e1a3e.herokuapp.com/search?q=payment+processing&k=3\")",
+      "Bash(heroku addons:*)",
+      "Bash(heroku addons:create heroku-postgresql:essential-0)",
+      "Bash(heroku addons:info postgresql-corrugated-66897)"
+    ]
+  }
+}

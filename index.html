@@ -426,6 +426,32 @@
       display:none !important;
     }
 
+    /* ── toast ── */
+    #toast{
+      position:fixed;
+      bottom:28px;
+      left:50%;
+      transform:translateX(-50%) translateY(20px);
+      padding:12px 20px;
+      border-radius:14px;
+      font-size:14px;
+      font-weight:700;
+      color:#fff;
+      background:#1c3a6b;
+      box-shadow:0 6px 24px rgba(0,0,0,.18);
+      opacity:0;
+      pointer-events:none;
+      transition:opacity .25s ease, transform .25s ease;
+      z-index:9999;
+      white-space:nowrap;
+    }
+    #toast.show{
+      opacity:1;
+      transform:translateX(-50%) translateY(0);
+    }
+    #toast.toast-error{ background:#8b2f2f; }
+    #toast.toast-ok   { background:#1f6a31; }
+
     /* ── API mode badge ── */
     .mode-badge{
       display:inline-flex;
@@ -522,6 +548,8 @@
   crossorigin="anonymous"></script>
 </head>
 <body>
+  <div id="toast"></div>
+
   <div class="header">
     <h1>Camille Guide Mode</h1>
     <p>
@@ -652,12 +680,12 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
               </div>
 
               <div class="toolbar" style="margin-top:16px; margin-bottom:0;">
-                <button type="submit" class="btn-primary">Add Company</button>
+                <button type="submit" class="btn-primary" id="addCompanyBtn">Add Company</button>
                 <button type="button" class="btn-secondary" id="clearFormBtn">Clear Form</button>
               </div>
 
-              <div class="inline-note">
-                After you add a company, it becomes part of the active dataset immediately and will be included in the downloaded CSV.
+              <div class="inline-note" id="addNote">
+                When the server is live, companies are embedded and indexed immediately — they'll appear in cosine similarity results right away and survive dyno restarts.
               </div>
             </form>
 
@@ -1254,47 +1282,89 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
     downloadBtn.addEventListener("click", downloadCurrentCsv);
     resetBtn.addEventListener("click", resetToDefault);
 
-    companyForm.addEventListener("submit", (event) => {
+    // ── toast helper ─────────────────────────────────────────────────
+    const toastEl = document.getElementById("toast");
+    let toastTimer = null;
+    function showToast(msg, type = "ok", ms = 3200){
+      toastEl.textContent = msg;
+      toastEl.className = `show toast-${type}`;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toastEl.className = ""; }, ms);
+    }
+
+    // ── form submit: local update + API persist ───────────────────────
+    const addCompanyBtn = document.getElementById("addCompanyBtn");
+
+    companyForm.addEventListener("submit", async (event) => {
       event.preventDefault();
 
       const record = {
-        company_name: document.getElementById("company_name").value.trim(),
-        website: document.getElementById("website").value.trim(),
-        short_description: document.getElementById("short_description").value.trim(),
+        company_name:        document.getElementById("company_name").value.trim(),
+        website:             document.getElementById("website").value.trim(),
+        short_description:   document.getElementById("short_description").value.trim(),
         product_description: document.getElementById("product_description").value.trim(),
-        mapped_function: document.getElementById("mapped_function").value.trim(),
-        mapped_industry: document.getElementById("mapped_industry").value.trim(),
-        match_keywords: parseListValue(document.getElementById("match_keywords").value),
-        aliases: parseListValue(document.getElementById("aliases").value),
-        active: document.getElementById("active").value.trim(),
-        priority: document.getElementById("priority").value.trim() || "7",
-        source: document.getElementById("source").value.trim() || "manual entry"
+        mapped_function:     document.getElementById("mapped_function").value.trim(),
+        mapped_industry:     document.getElementById("mapped_industry").value.trim(),
+        match_keywords:      parseListValue(document.getElementById("match_keywords").value),
+        aliases:             parseListValue(document.getElementById("aliases").value),
+        active:              document.getElementById("active").value.trim(),
+        priority:            document.getElementById("priority").value.trim() || "7",
+        source:              document.getElementById("source").value.trim() || "manual entry"
       };
 
-      if(!record.company_name || !record.short_description || !record.product_description || !record.mapped_function || !record.mapped_industry || !record.match_keywords.length){
-        alert("Please fill in the required fields before adding the company.");
+      if(!record.company_name || !record.short_description || !record.product_description
+         || !record.mapped_function || !record.mapped_industry || !record.match_keywords.length){
+        showToast("Please fill in all required fields.", "error");
         return;
       }
 
-      const existingIndex = companies.findIndex(c => normalize(c.company_name) === normalize(record.company_name));
-      if(existingIndex >= 0){
-        companies[existingIndex] = record;
-      } else {
-        companies.push(record);
-      }
-
+      // 1. Update local companies array + localStorage (instant, works offline too)
+      const existingIndex = companies.findIndex(
+        c => normalize(c.company_name) === normalize(record.company_name)
+      );
+      if(existingIndex >= 0){ companies[existingIndex] = record; }
+      else { companies.push(record); }
       currentSourceName = "browser working dataset";
       saveState();
       updatePreview();
       updateDatalists();
+
+      // 2. POST to API → persist to Postgres + embed into ChromaDB
+      if(apiOnline){
+        addCompanyBtn.disabled = true;
+        addCompanyBtn.textContent = "Indexing…";
+        try{
+          const payload = {
+            ...record,
+            match_keywords: record.match_keywords.join(", "),
+            aliases:        record.aliases.join(", "),
+          };
+          const res = await fetch(`${API_BASE}/companies`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(15000),
+          });
+          const data = await res.json();
+          if(!res.ok) throw new Error(data.error || res.statusText);
+          showToast(`✓ ${data.company} indexed — appears in cosine search immediately.`, "ok");
+        } catch(err){
+          console.warn("[api] company POST failed:", err);
+          showToast("Saved locally. Could not reach server — will re-index on next rebuild.", "error", 4500);
+        } finally{
+          addCompanyBtn.disabled = false;
+          addCompanyBtn.textContent = "Add Company";
+        }
+      } else {
+        showToast(`${record.company_name} saved locally (server offline).`, "ok");
+      }
+
       runMatch();
 
       companyForm.reset();
       document.getElementById("priority").value = "7";
       document.getElementById("active").value = "yes";
       document.getElementById("source").value = "manual entry";
-
-      alert("Company added to the active dataset.");
     });
 
     clearFormBtn.addEventListener("click", () => {
