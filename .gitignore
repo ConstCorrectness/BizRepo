@@ -1,0 +1,23 @@
+# virtual envs
+.venv/
+venv/
+env/
+
+# local chromadb (ephemeral on Heroku — rebuilt from test.csv)
+omni.db/
+*.db
+
+# python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# env vars
+.env
+.env.*
+
+# editors
+.vscode/
+.idea/
+*.swp

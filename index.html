@@ -1,0 +1,1523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Camille Guide Mode • Dual Input Prototype</title>
+  <style>
+    :root{
+      --bg:#f4f7fb;
+      --panel:#ffffff;
+      --line:#d7e0eb;
+      --text:#162338;
+      --muted:#5f6f84;
+      --navy:#1c3a6b;
+      --navy-2:#16315d;
+      --blue:#eef4fb;
+      --blue-2:#dbeaf7;
+      --green:#dff2e0;
+      --pink:#f6e3e3;
+      --shadow:0 12px 30px rgba(19,38,69,.08);
+      --radius:20px;
+    }
+
+    *{box-sizing:border-box}
+
+    body{
+      margin:0;
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      background:var(--bg);
+      color:var(--text);
+    }
+
+    .header{
+      background:linear-gradient(135deg,var(--navy-2) 0%, #1f4b89 100%);
+      color:#fff;
+      padding:34px 24px 28px;
+    }
+
+    .header h1{
+      margin:0;
+      font-size:38px;
+      line-height:1;
+      letter-spacing:.4px;
+    }
+
+    .header p{
+      margin:12px 0 0;
+      color:#d9ebff;
+      max-width:1100px;
+      line-height:1.5;
+      font-size:15px;
+    }
+
+    .wrap{
+      max-width:1450px;
+      margin:0 auto;
+      padding:24px;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns:1.1fr .9fr;
+      gap:20px;
+      align-items:start;
+    }
+
+    .panel{
+      background:var(--panel);
+      border:1px solid var(--line);
+      border-radius:24px;
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+
+    .panel-head{
+      padding:18px 20px;
+      border-bottom:1px solid var(--line);
+      font-size:15px;
+      font-weight:800;
+      color:var(--navy);
+      background:#fbfdff;
+    }
+
+    .panel-body{
+      padding:20px;
+    }
+
+    .stack{
+      display:grid;
+      gap:20px;
+    }
+
+    .toolbar{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin-bottom:16px;
+    }
+
+    button{
+      border:none;
+      border-radius:14px;
+      padding:12px 16px;
+      cursor:pointer;
+      font:inherit;
+      font-weight:800;
+      transition:.18s ease;
+    }
+
+    button:hover{
+      transform:translateY(-1px);
+    }
+
+    .btn-primary{
+      background:var(--navy);
+      color:#fff;
+    }
+
+    .btn-secondary{
+      background:#edf3fb;
+      color:var(--navy);
+      border:1px solid var(--line);
+    }
+
+    .btn-danger{
+      background:#fff2f2;
+      color:#8b2f2f;
+      border:1px solid #ead0d0;
+    }
+
+    .btn-green{
+      background:#edf9ef;
+      color:#1f6a31;
+      border:1px solid #cfe6d4;
+    }
+
+    .status{
+      padding:12px 14px;
+      border:1px solid var(--line);
+      border-radius:16px;
+      background:#f8fbff;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.45;
+      margin-bottom:14px;
+    }
+
+    .status strong{
+      color:var(--navy);
+    }
+
+    textarea, input, select{
+      width:100%;
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:12px 14px;
+      font:inherit;
+      color:var(--text);
+      background:#fff;
+      outline:none;
+    }
+
+    textarea{
+      min-height:120px;
+      resize:vertical;
+      line-height:1.5;
+    }
+
+    textarea:focus, input:focus, select:focus{
+      border-color:#6ea7e6;
+      box-shadow:0 0 0 4px rgba(110,167,230,.14);
+    }
+
+    .suggestions{
+      margin-top:10px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+
+    .suggestion{
+      background:#f8fbff;
+      border:1px solid var(--line);
+      color:var(--navy);
+      border-radius:14px;
+      padding:10px 12px;
+      font-size:14px;
+      cursor:pointer;
+    }
+
+    .suggestion:hover{
+      background:#edf5ff;
+    }
+
+    .results{
+      display:grid;
+      gap:14px;
+      margin-top:18px;
+    }
+
+    .result{
+      border:1px solid var(--line);
+      border-radius:18px;
+      background:#fff;
+      padding:16px;
+    }
+
+    .result-top{
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      align-items:flex-start;
+      margin-bottom:10px;
+    }
+
+    .result h3{
+      margin:0;
+      font-size:20px;
+      color:var(--navy);
+    }
+
+    .path{
+      margin-top:6px;
+      font-size:13px;
+      color:var(--muted);
+      font-weight:700;
+    }
+
+    .score{
+      font-size:14px;
+      font-weight:800;
+      color:var(--navy);
+      background:var(--blue);
+      border:1px solid var(--line);
+      padding:8px 10px;
+      border-radius:12px;
+      white-space:nowrap;
+    }
+
+    .desc{
+      margin:0;
+      color:var(--text);
+      font-size:14px;
+      line-height:1.55;
+    }
+
+    .meta{
+      margin-top:10px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+
+    .tag{
+      background:#f4f8fd;
+      border:1px solid var(--line);
+      color:var(--navy);
+      padding:6px 10px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:800;
+    }
+
+    .empty{
+      margin-top:18px;
+      padding:18px;
+      border:1px dashed var(--line);
+      border-radius:18px;
+      color:var(--muted);
+      background:#fff;
+      line-height:1.5;
+    }
+
+    .preview-summary{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:10px;
+      margin-bottom:14px;
+    }
+
+    .stat{
+      padding:12px 10px;
+      border-radius:16px;
+      background:var(--blue);
+      border:1px solid var(--line);
+      text-align:center;
+    }
+
+    .stat .num{
+      font-size:24px;
+      font-weight:900;
+      color:var(--navy);
+      margin-bottom:4px;
+    }
+
+    .stat .lbl{
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      color:var(--muted);
+      font-weight:800;
+    }
+
+    .preview-wrap{
+      border:1px solid var(--line);
+      border-radius:18px;
+      overflow:auto;
+      background:#fff;
+      max-height:520px;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      min-width:980px;
+      font-size:13px;
+    }
+
+    thead th{
+      position:sticky;
+      top:0;
+      background:#f8fbff;
+      color:var(--navy);
+      text-align:left;
+      padding:12px 10px;
+      border-bottom:1px solid var(--line);
+      font-weight:900;
+      z-index:2;
+    }
+
+    tbody td{
+      padding:10px;
+      border-bottom:1px solid #edf1f6;
+      color:var(--text);
+      vertical-align:top;
+      line-height:1.45;
+    }
+
+    tbody tr:nth-child(even){
+      background:#fcfdff;
+    }
+
+    .guide{
+      background:#fbfdff;
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:16px;
+      line-height:1.55;
+    }
+
+    .guide h3{
+      margin:0 0 10px;
+      font-size:16px;
+      color:var(--navy);
+    }
+
+    .guide p{
+      margin:0 0 10px;
+      color:var(--muted);
+      font-size:13px;
+    }
+
+    .guide ul{
+      margin:0;
+      padding-left:18px;
+      color:var(--muted);
+      font-size:13px;
+    }
+
+    .guide li{
+      margin:6px 0;
+    }
+
+    .mini-code{
+      margin-top:10px;
+      background:#fff;
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:12px;
+      font-size:12px;
+      color:var(--navy);
+      overflow:auto;
+      white-space:pre-wrap;
+      line-height:1.45;
+    }
+
+    .form-grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+    }
+
+    .form-grid .full{
+      grid-column:1 / -1;
+    }
+
+    .field-label{
+      display:block;
+      margin:0 0 6px;
+      font-size:12px;
+      font-weight:800;
+      color:var(--navy);
+      text-transform:uppercase;
+      letter-spacing:.05em;
+    }
+
+    .helper{
+      margin-top:6px;
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.45;
+    }
+
+    .inline-note{
+      margin-top:10px;
+      padding:10px 12px;
+      border-radius:14px;
+      background:#f8fbff;
+      border:1px solid var(--line);
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.5;
+    }
+
+    .hidden{
+      display:none !important;
+    }
+
+    /* ── API mode badge ── */
+    .mode-badge{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:6px 11px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:800;
+      border:1px solid var(--line);
+      background:#f4f8fd;
+      color:var(--muted);
+      transition:.25s ease;
+    }
+    .mode-badge .dot{
+      width:8px;
+      height:8px;
+      border-radius:50%;
+      background:#b0bec5;
+      transition:.25s ease;
+    }
+    .mode-badge.live .dot{
+      background:#34a853;
+      box-shadow:0 0 0 3px rgba(52,168,83,.18);
+    }
+    .mode-badge.live{
+      background:#edf9ef;
+      border-color:#cfe6d4;
+      color:#1f6a31;
+    }
+    .mode-badge.offline .dot{ background:#f9ab00; }
+    .mode-badge.offline{
+      background:#fff8ed;
+      border-color:#f0ddb8;
+      color:#7a4f0d;
+    }
+
+    /* ── low-confidence nudge ── */
+    .refine-nudge{
+      margin-top:10px;
+      padding:10px 14px;
+      border-radius:14px;
+      background:#fff8ed;
+      border:1px solid #f0ddb8;
+      color:#7a4f0d;
+      font-size:13px;
+      line-height:1.5;
+    }
+
+    /* ── cosine score bar ── */
+    .score-bar-wrap{
+      margin-top:8px;
+      height:4px;
+      border-radius:4px;
+      background:#e8eef6;
+      overflow:hidden;
+    }
+    .score-bar{
+      height:100%;
+      border-radius:4px;
+      background:linear-gradient(90deg,#4a8fe8,#1c3a6b);
+      transition:width .4s ease;
+    }
+    .score.cosine{
+      background:linear-gradient(135deg,#eef4fb,#dbeaf7);
+      border-color:#b8d5f0;
+      font-variant-numeric:tabular-nums;
+    }
+    .score.keyword{
+      background:#f4f8fd;
+    }
+
+    @media (max-width:1100px){
+      .grid{
+        grid-template-columns:1fr;
+      }
+    }
+
+    @media (max-width:780px){
+      .form-grid{
+        grid-template-columns:1fr;
+      }
+      .preview-summary{
+        grid-template-columns:1fr;
+      }
+      .result-top{
+        flex-direction:column;
+      }
+    }
+  </style>
+  <script
+  src="https://code.jquery.com/jquery-4.0.0.min.js"
+  integrity="sha256-OaVG6prZf4v69dPg6PhVattBXkcOWQB62pdZ3ORyrao="
+  crossorigin="anonymous"></script>
+</head>
+<body>
+  <div class="header">
+    <h1>Camille Guide Mode</h1>
+    <p>
+      This version supports two ways to input companies: upload a CSV or add companies manually in the page.
+      It also previews the currently loaded dataset, lets you download the current file, and stores your working version in the browser until you reset it.
+    </p>
+  </div>
+
+  <div class="wrap">
+    <div class="grid">
+      <div class="stack">
+        <div class="panel">
+          <div class="panel-head" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+            <span>Search Prototype</span>
+            <span class="mode-badge offline" id="modeBadge">
+              <span class="dot"></span>
+              <span id="modeLabel">Keyword</span>
+            </span>
+          </div>
+          <div class="panel-body">
+            <div class="toolbar">
+              <button class="btn-primary" id="uploadBtn">Upload CSV</button>
+              <button class="btn-green" id="downloadBtn">Download Current CSV</button>
+              <button class="btn-danger" id="resetBtn">Reset to Default</button>
+              <button class="btn-secondary" id="rebuildBtn" title="Rebuild ChromaDB from test.csv">Rebuild DB</button>
+              <input id="fileInput" type="file" accept=".csv,text/csv" class="hidden" />
+            </div>
+
+            <div id="status" class="status">Loading dataset...</div>
+
+            <textarea id="queryInput" placeholder="Example: I need help screening candidates and finding the right people faster."></textarea>
+
+            <div id="refinNudge" class="refine-nudge hidden">
+              ⚠️ Low confidence — try adding more detail. E.g. mention the industry, workflow, or specific pain point.
+            </div>
+
+            <div id="suggestions" class="suggestions"></div>
+
+            <div id="results" class="results"></div>
+
+            <div id="emptyState" class="empty">
+              Start typing to see live suggestions and the top 3 company matches.
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">Manual Company Entry</div>
+          <div class="panel-body">
+            <div class="guide" style="margin-bottom:16px;">
+              <h3>Quick guide for manual input</h3>
+              <p>Add one company at a time here. This is the fastest way to test new companies without editing a CSV first.</p>
+              <ul>
+                <li><strong>company_name:</strong> the exact display name you want returned in results</li>
+                <li><strong>mapped_function:</strong> the main branch the company belongs to</li>
+                <li><strong>mapped_industry:</strong> the industry branch, or use General Business</li>
+                <li><strong>match_keywords:</strong> verbs and nouns only, comma-separated</li>
+                <li><strong>short_description:</strong> one plain-English sentence</li>
+                <li><strong>product_description:</strong> a fuller explanation of what the product does</li>
+              </ul>
+              <div class="mini-code">Good match_keywords:
+hiring, recruiting, screening, candidates, suppliers, sourcing, audit, anomalies, reporting, planning
+
+Avoid:
+smart, innovative, powerful, seamless, advanced, intelligent</div>
+            </div>
+
+            <form id="companyForm">
+              <div class="form-grid">
+                <div>
+                  <label class="field-label" for="company_name">Company Name</label>
+                  <input id="company_name" name="company_name" required />
+                </div>
+
+                <div>
+                  <label class="field-label" for="website">Website</label>
+                  <input id="website" name="website" placeholder="https://example.com" />
+                </div>
+
+                <div>
+                  <label class="field-label" for="mapped_function">Mapped Function</label>
+                  <input id="mapped_function" name="mapped_function" list="functionOptions" required />
+                </div>
+
+                <div>
+                  <label class="field-label" for="mapped_industry">Mapped Industry</label>
+                  <input id="mapped_industry" name="mapped_industry" list="industryOptions" required />
+                </div>
+
+                <div class="full">
+                  <label class="field-label" for="short_description">Short Description</label>
+                  <textarea id="short_description" name="short_description" style="min-height:82px;" required></textarea>
+                </div>
+
+                <div class="full">
+                  <label class="field-label" for="product_description">Product Description</label>
+                  <textarea id="product_description" name="product_description" style="min-height:110px;" required></textarea>
+                </div>
+
+                <div class="full">
+                  <label class="field-label" for="match_keywords">Match Keywords</label>
+                  <textarea id="match_keywords" name="match_keywords" style="min-height:82px;" placeholder="recruiting, hiring, screening, candidates, talent" required></textarea>
+                  <div class="helper">Use verbs and nouns only. Separate with commas.</div>
+                </div>
+
+                <div>
+                  <label class="field-label" for="aliases">Aliases</label>
+                  <input id="aliases" name="aliases" placeholder="short name, alternate spelling" />
+                </div>
+
+                <div>
+                  <label class="field-label" for="priority">Priority</label>
+                  <input id="priority" name="priority" type="number" min="1" max="10" value="7" />
+                </div>
+
+                <div>
+                  <label class="field-label" for="active">Active</label>
+                  <select id="active" name="active">
+                    <option value="yes" selected>yes</option>
+                    <option value="no">no</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="field-label" for="source">Source</label>
+                  <input id="source" name="source" value="manual entry" />
+                </div>
+              </div>
+
+              <div class="toolbar" style="margin-top:16px; margin-bottom:0;">
+                <button type="submit" class="btn-primary">Add Company</button>
+                <button type="button" class="btn-secondary" id="clearFormBtn">Clear Form</button>
+              </div>
+
+              <div class="inline-note">
+                After you add a company, it becomes part of the active dataset immediately and will be included in the downloaded CSV.
+              </div>
+            </form>
+
+            <datalist id="functionOptions"></datalist>
+            <datalist id="industryOptions"></datalist>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="panel">
+          <div class="panel-head">Loaded File Preview</div>
+          <div class="panel-body">
+            <div class="preview-summary">
+              <div class="stat">
+                <div class="num" id="companyCount">0</div>
+                <div class="lbl">Companies</div>
+              </div>
+              <div class="stat">
+                <div class="num" id="columnCount">0</div>
+                <div class="lbl">Columns</div>
+              </div>
+              <div class="stat">
+                <div class="num" id="previewRows">0</div>
+                <div class="lbl">Preview Rows</div>
+              </div>
+            </div>
+
+            <div class="preview-wrap">
+              <table>
+                <thead>
+                  <tr id="previewHead"></tr>
+                </thead>
+                <tbody id="previewBody"></tbody>
+              </table>
+            </div>
+
+            <div class="helper" style="margin-top:12px;">
+              Preview shows the first 10 active rows from the current working dataset.
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">CSV Guide</div>
+          <div class="panel-body">
+            <div class="guide">
+              <h3>CSV header format</h3>
+              <p>Use this exact header if you upload your own file.</p>
+              <div class="mini-code">company_name,website,short_description,product_description,mapped_function,mapped_industry,match_keywords,aliases,active,priority,source</div>
+
+              <h3 style="margin-top:16px;">How this version works</h3>
+              <ul>
+                <li>Default dataset is embedded inside the page</li>
+                <li>Upload a CSV to replace the working dataset</li>
+                <li>Add companies manually without touching the CSV</li>
+                <li>Download the current working dataset at any time</li>
+                <li>Your current dataset is stored in the browser until reset</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY_RECORDS = "camille_dual_input_records";
+    const STORAGE_KEY_SOURCE = "camille_dual_input_source";
+    const HEADERS = [
+      "company_name",
+      "website",
+      "short_description",
+      "product_description",
+      "mapped_function",
+      "mapped_industry",
+      "match_keywords",
+      "aliases",
+      "active",
+      "priority",
+      "source"
+    ];
+
+    const defaultRecords = [
+      {
+        company_name:"GetSales.io",
+        website:"https://getsales.io",
+        short_description:"Team-centric LinkedIn and email outreach automation platform for lead generation agencies and outbound teams.",
+        product_description:"Supports multichannel outreach, multiple LinkedIn senders, unified inbox, API, webhooks, and outbound sales workflows.",
+        mapped_function:"Sales and Revenue",
+        mapped_industry:"General Business",
+        match_keywords:"sales, lead generation, outreach, prospecting, leads, pipeline, messaging, email, linkedin",
+        aliases:"GetSales",
+        active:"yes",
+        priority:"9",
+        source:"official site"
+      },
+      {
+        company_name:"Talentpilot",
+        website:"https://www.talentpilot.com",
+        short_description:"AI system for talent acquisition and talent management.",
+        product_description:"Supports sourcing the best talent, autonomous screening, selecting the right talent, employee skill mapping, performance reviews, and workforce planning.",
+        mapped_function:"Human Resources and Recruiting",
+        mapped_industry:"Human Resources and Recruiting",
+        match_keywords:"hiring, recruiting, screening, candidates, talent, workforce, selection, sourcing",
+        aliases:"Talent Pilot",
+        active:"yes",
+        priority:"9",
+        source:"official site"
+      },
+      {
+        company_name:"KnowGuard AI",
+        website:"",
+        short_description:"Enterprise cognition and autonomous observation platform for auditing systems and flagging anomalies.",
+        product_description:"Connects to infrastructure, audits operations, and surfaces risk signals or suspicious anomalies in real time.",
+        mapped_function:"Security and Risk",
+        mapped_industry:"General Business",
+        match_keywords:"security, risk, audit, anomalies, monitoring, infrastructure, alerts, threats",
+        aliases:"KnowGuard",
+        active:"yes",
+        priority:"9",
+        source:"working draft"
+      },
+      {
+        company_name:"DataHive AI",
+        website:"",
+        short_description:"Data-focused platform for collecting, organizing, and preparing datasets for analytics and AI workflows.",
+        product_description:"Supports data collection, cleaning, labeling, preparation, and structured dataset workflows.",
+        mapped_function:"Data and Analytics",
+        mapped_industry:"General Business",
+        match_keywords:"data, analytics, datasets, collection, cleaning, labeling, preparation, reporting",
+        aliases:"DataHive",
+        active:"yes",
+        priority:"8",
+        source:"working draft"
+      },
+      {
+        company_name:"SourcingGPT / BuyHive",
+        website:"",
+        short_description:"AI sourcing agent for supplier discovery, RFQs, vendor comparison, and procurement workflows.",
+        product_description:"Helps teams find suppliers, compare quotes, shortlist vendors, analyze landed cost, and manage sourcing decisions.",
+        mapped_function:"Procurement and Vendor Management",
+        mapped_industry:"General Business",
+        match_keywords:"procurement, sourcing, suppliers, vendors, rfq, buying, comparison, shortlisting, quotes",
+        aliases:"SourcingGPT, BuyHive",
+        active:"yes",
+        priority:"9",
+        source:"working draft"
+      },
+      {
+        company_name:"BotTalk",
+        website:"",
+        short_description:"Conversational support tool for handling customer questions and service interactions.",
+        product_description:"Supports automated support conversations, response handling, and customer communication workflows.",
+        mapped_function:"Customer Support and Success",
+        mapped_industry:"General Business",
+        match_keywords:"support, service, tickets, conversation, assistance, questions, responses, customers",
+        aliases:"Bot Talk",
+        active:"yes",
+        priority:"7",
+        source:"working draft"
+      },
+      {
+        company_name:"LiveFlow.AI",
+        website:"",
+        short_description:"Finance and reporting platform supporting business reporting and accounting workflows.",
+        product_description:"Helps teams manage reporting, planning, and finance-related operational insight.",
+        mapped_function:"Finance and Accounting",
+        mapped_industry:"General Business",
+        match_keywords:"finance, accounting, reporting, forecasting, planning, financials, modeling, budgets",
+        aliases:"LiveFlow",
+        active:"yes",
+        priority:"8",
+        source:"working draft"
+      },
+      {
+        company_name:"GovHorizon",
+        website:"",
+        short_description:"Government-focused platform supporting public-sector processes and decision workflows.",
+        product_description:"Supports public-sector operations, program workflows, and government-oriented service execution.",
+        mapped_function:"Government and Public Sector",
+        mapped_industry:"Government and Public Sector",
+        match_keywords:"government, policy, agencies, programs, public sector, operations, administration",
+        aliases:"Gov Horizon",
+        active:"yes",
+        priority:"7",
+        source:"working draft"
+      },
+      {
+        company_name:"RetinAI / OMBOT.AI",
+        website:"",
+        short_description:"Healthcare-oriented AI platform supporting clinical and medical workflow use cases.",
+        product_description:"Supports healthcare workflows, medical data interpretation, and clinic-facing AI support.",
+        mapped_function:"Healthcare and Clinics",
+        mapped_industry:"Healthcare and Clinics",
+        match_keywords:"healthcare, clinics, patients, diagnostics, workflows, records, imaging, medicine",
+        aliases:"RetinAI, OMBOT.AI",
+        active:"yes",
+        priority:"8",
+        source:"working draft"
+      },
+      {
+        company_name:"WattNext",
+        website:"",
+        short_description:"Energy-focused platform supporting utility, energy optimization, or power-related business workflows.",
+        product_description:"Supports energy planning, monitoring, or utility-focused operational intelligence.",
+        mapped_function:"Energy and Utilities",
+        mapped_industry:"Energy and Utilities",
+        match_keywords:"energy, utilities, power, monitoring, efficiency, planning, electricity, grid",
+        aliases:"Watt Next",
+        active:"yes",
+        priority:"8",
+        source:"working draft"
+      }
+    ];
+
+    const sampleQueries = [
+      "I need help screening candidates and finding the right people faster.",
+      "I need to find suppliers, send RFQs, compare quotes, and shortlist vendors.",
+      "I need something that audits our systems and flags suspicious anomalies in real time."
+    ];
+
+    const synonymMap = {
+      "sales":["sales","lead","leads","prospecting","prospect","pipeline","outbound","inbound","revenue","conversion","outreach"],
+      "recruiting":["recruiting","hiring","candidates","candidate","talent","hr","screening","applicants","workforce","staffing","selection"],
+      "security":["security","risk","threat","anomaly","anomalies","audit","suspicious","monitoring","fraud","alerts"],
+      "data":["data","datasets","analytics","reporting","insights","labeling","collection","training","preparation"],
+      "procurement":["procurement","vendors","vendor","supplier","suppliers","sourcing","rfq","quotes","buying","shortlist","shortlisting"],
+      "support":["support","customer","service","helpdesk","help","tickets","ticket","desk","call","voice","responses"],
+      "government":["government","public","agency","agencies","civic","municipal","public-sector","policy","programs"],
+      "finance":["finance","accounting","reporting","forecasting","financials","planning","spreadsheet","budgets"],
+      "legal":["legal","compliance","regulatory","law","governance","contracts","policy","validation","review"],
+      "energy":["energy","utilities","power","grid","electricity","efficiency","monitoring"]
+    };
+
+    const queryInput = document.getElementById("queryInput");
+    const suggestionsEl = document.getElementById("suggestions");
+    const resultsEl = document.getElementById("results");
+    const emptyStateEl = document.getElementById("emptyState");
+    const statusEl = document.getElementById("status");
+
+    const uploadBtn = document.getElementById("uploadBtn");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const resetBtn = document.getElementById("resetBtn");
+    const fileInput = document.getElementById("fileInput");
+
+    const companyCountEl = document.getElementById("companyCount");
+    const columnCountEl = document.getElementById("columnCount");
+    const previewRowsEl = document.getElementById("previewRows");
+    const previewHeadEl = document.getElementById("previewHead");
+    const previewBodyEl = document.getElementById("previewBody");
+
+    const companyForm = document.getElementById("companyForm");
+    const clearFormBtn = document.getElementById("clearFormBtn");
+    const functionOptions = document.getElementById("functionOptions");
+    const industryOptions = document.getElementById("industryOptions");
+
+    let companies = [];
+    let currentSourceName = "embedded default dataset";
+
+    function normalize(text){
+      return String(text || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\\s\\-\\/]/g, " ")
+        .replace(/\\s+/g, " ")
+        .trim();
+    }
+
+    function tokenize(text){
+      return normalize(text).split(" ").filter(Boolean);
+    }
+
+    function expandTerms(tokens){
+      const expanded = new Set(tokens);
+      tokens.forEach(token => {
+        Object.values(synonymMap).forEach(group => {
+          if(group.includes(token)){
+            group.forEach(term => expanded.add(term));
+          }
+        });
+      });
+      return Array.from(expanded);
+    }
+
+    function parseListValue(value){
+      if(Array.isArray(value)) return value.filter(Boolean);
+      return String(value || "")
+        .split(",")
+        .map(x => x.trim())
+        .filter(Boolean);
+    }
+
+    function toInternalRecords(records){
+      return records.map(record => ({
+        company_name: record.company_name || "",
+        website: record.website || "",
+        short_description: record.short_description || "",
+        product_description: record.product_description || "",
+        mapped_function: record.mapped_function || "",
+        mapped_industry: record.mapped_industry || "",
+        match_keywords: parseListValue(record.match_keywords),
+        aliases: parseListValue(record.aliases),
+        active: record.active || "yes",
+        priority: record.priority || "7",
+        source: record.source || ""
+      })).filter(record => normalize(record.active) !== "no");
+    }
+
+    function toExportRecords(records){
+      return records.map(record => ({
+        company_name: record.company_name || "",
+        website: record.website || "",
+        short_description: record.short_description || "",
+        product_description: record.product_description || "",
+        mapped_function: record.mapped_function || "",
+        mapped_industry: record.mapped_industry || "",
+        match_keywords: (record.match_keywords || []).join(", "),
+        aliases: (record.aliases || []).join(", "),
+        active: record.active || "yes",
+        priority: record.priority || "7",
+        source: record.source || ""
+      }));
+    }
+
+    function escapeCsvValue(value){
+      const str = String(value ?? "");
+      if(str.includes('"') || str.includes(",") || str.includes("\\n")){
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    }
+
+    function objectsToCsv(records){
+      const lines = [
+        HEADERS.join(","),
+        ...records.map(record =>
+          HEADERS.map(h => escapeCsvValue(record[h] ?? "")).join(",")
+        )
+      ];
+      return lines.join("\\n");
+    }
+
+    function parseCsv(text){
+      const rows = [];
+      let row = [];
+      let current = "";
+      let inQuotes = false;
+
+      for(let i = 0; i < text.length; i++){
+        const char = text[i];
+        const next = text[i + 1];
+
+        if(char === '"' && inQuotes && next === '"'){
+          current += '"';
+          i++;
+        } else if(char === '"'){
+          inQuotes = !inQuotes;
+        } else if(char === "," && !inQuotes){
+          row.push(current);
+          current = "";
+        } else if((char === "\\n" || char === "\\r") && !inQuotes){
+          if(char === "\\r" && next === "\\n") i++;
+          row.push(current);
+          rows.push(row);
+          row = [];
+          current = "";
+        } else {
+          current += char;
+        }
+      }
+
+      if(current.length || row.length){
+        row.push(current);
+        rows.push(row);
+      }
+
+      return rows;
+    }
+
+    function rowsToObjects(rows){
+      if(!rows.length) return [];
+      const headers = rows[0].map(h => h.trim());
+      return rows.slice(1).filter(r => r.some(cell => String(cell).trim())).map(r => {
+        const obj = {};
+        headers.forEach((h, i) => obj[h] = (r[i] || "").trim());
+        return obj;
+      });
+    }
+
+    function companyBlob(company){
+      return normalize([
+        company.company_name,
+        company.website,
+        company.short_description,
+        company.product_description,
+        company.mapped_function,
+        company.mapped_industry,
+        ...(company.match_keywords || []),
+        ...(company.aliases || [])
+      ].join(" "));
+    }
+
+    function scoreCompany(query, company){
+      const rawTokens = tokenize(query);
+      const queryTokens = expandTerms(rawTokens);
+      const blob = companyBlob(company);
+      const blobTokens = new Set(blob.split(" "));
+      const matchedTerms = [];
+      let score = 0;
+
+      queryTokens.forEach(term => {
+        if(!term) return;
+
+        const keywordHit = (company.match_keywords || []).some(k => normalize(k).includes(term) || term.includes(normalize(k)));
+        if(keywordHit){
+          score += 7;
+          matchedTerms.push(term);
+          return;
+        }
+
+        const aliasHit = (company.aliases || []).some(a => normalize(a).includes(term) || term.includes(normalize(a)));
+        if(aliasHit){
+          score += 5;
+          matchedTerms.push(term);
+          return;
+        }
+
+        if(normalize(company.company_name).includes(term)){
+          score += 6;
+          matchedTerms.push(term);
+          return;
+        }
+
+        if(blobTokens.has(term)){
+          score += 3;
+          matchedTerms.push(term);
+          return;
+        }
+
+        if(blob.includes(term)){
+          score += 2;
+          matchedTerms.push(term);
+        }
+      });
+
+      const fn = normalize(company.mapped_function);
+      const ind = normalize(company.mapped_industry);
+
+      queryTokens.forEach(term => {
+        if(fn.includes(term)) score += 3;
+        if(ind.includes(term)) score += 2;
+      });
+
+      const priorityBoost = parseInt(company.priority || "0", 10) || 0;
+      score += Math.min(priorityBoost, 10) * 0.3;
+
+      const uniqueMatches = [...new Set(matchedTerms)];
+      score += Math.min(uniqueMatches.length, 8);
+
+      return {
+        company,
+        score,
+        matchedTerms: uniqueMatches
+      };
+    }
+
+    // runMatch is defined below (async, API-first with keyword fallback)
+
+    function scoreSuggestion(currentText, suggestionText){
+      const inputTokens = expandTerms(tokenize(currentText));
+      const suggestionTokens = tokenize(suggestionText);
+      let score = 0;
+
+      inputTokens.forEach(token => {
+        if(suggestionTokens.includes(token)) score += 4;
+        else if(normalize(suggestionText).includes(token)) score += 2;
+      });
+
+      if(!currentText.trim()) score = 1;
+      return score;
+    }
+
+    function updateSuggestions(){
+      const value = queryInput.value.trim();
+
+      const ranked = sampleQueries
+        .map(text => ({ text, score: scoreSuggestion(value, text) }))
+        .sort((a,b) => b.score - a.score)
+        .filter(item => item.score > 0)
+        .slice(0, 3);
+
+      suggestionsEl.innerHTML = ranked.map(item => `
+        <div class="suggestion" onclick="applySuggestion(${JSON.stringify(item.text)})">${item.text}</div>
+      `).join("");
+    }
+
+    function applySuggestion(text){
+      queryInput.value = text;
+      updateSuggestions();
+      runMatch();
+      queryInput.focus();
+    }
+
+    function saveState(){
+      localStorage.setItem(STORAGE_KEY_RECORDS, JSON.stringify(toExportRecords(companies)));
+      localStorage.setItem(STORAGE_KEY_SOURCE, currentSourceName);
+    }
+
+    function updatePreview(){
+      const exportRecords = toExportRecords(companies);
+
+      companyCountEl.textContent = String(exportRecords.length);
+      columnCountEl.textContent = String(HEADERS.length);
+      previewRowsEl.textContent = String(Math.min(10, exportRecords.length));
+
+      previewHeadEl.innerHTML = HEADERS.map(h => `<th>${h}</th>`).join("");
+
+      const previewRows = exportRecords.slice(0, 10);
+      previewBodyEl.innerHTML = previewRows.map(row => `
+        <tr>
+          ${HEADERS.map(h => `<td>${String(row[h] || "")}</td>`).join("")}
+        </tr>
+      `).join("");
+
+      statusEl.innerHTML = `
+        <strong>Loaded source:</strong> ${currentSourceName}<br>
+        <strong>Active companies:</strong> ${companies.length}
+      `;
+    }
+
+    function updateDatalists(){
+      const functions = [...new Set(companies.map(c => c.mapped_function).filter(Boolean))].sort();
+      const industries = [...new Set(companies.map(c => c.mapped_industry).filter(Boolean))].sort();
+
+      functionOptions.innerHTML = functions.map(item => `<option value="${item}"></option>`).join("");
+      industryOptions.innerHTML = industries.map(item => `<option value="${item}"></option>`).join("");
+    }
+
+    function loadFromRecords(records, sourceName){
+      companies = toInternalRecords(records);
+      currentSourceName = sourceName || "working dataset";
+      saveState();
+      updatePreview();
+      updateDatalists();
+      updateSuggestions();
+      runMatch();
+    }
+
+    function downloadCurrentCsv(){
+      const exportRecords = toExportRecords(companies);
+      const csvText = objectsToCsv(exportRecords);
+      const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "camille_companies_master.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function resetToDefault(){
+      localStorage.removeItem(STORAGE_KEY_RECORDS);
+      localStorage.removeItem(STORAGE_KEY_SOURCE);
+      companies = [];
+      loadFromRecords(defaultRecords, "embedded default dataset");
+      companyForm.reset();
+      document.getElementById("priority").value = "7";
+      document.getElementById("active").value = "yes";
+      document.getElementById("source").value = "manual entry";
+    }
+
+    function handleCsvUpload(text, fileName){
+      const rows = parseCsv(text);
+      const records = rowsToObjects(rows);
+      loadFromRecords(records, fileName || "uploaded CSV");
+    }
+
+    uploadBtn.addEventListener("click", () => fileInput.click());
+
+    fileInput.addEventListener("change", (event) => {
+      const file = event.target.files[0];
+      if(!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        handleCsvUpload(String(e.target.result || ""), file.name);
+      };
+      reader.readAsText(file);
+      fileInput.value = "";
+    });
+
+    downloadBtn.addEventListener("click", downloadCurrentCsv);
+    resetBtn.addEventListener("click", resetToDefault);
+
+    companyForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+
+      const record = {
+        company_name: document.getElementById("company_name").value.trim(),
+        website: document.getElementById("website").value.trim(),
+        short_description: document.getElementById("short_description").value.trim(),
+        product_description: document.getElementById("product_description").value.trim(),
+        mapped_function: document.getElementById("mapped_function").value.trim(),
+        mapped_industry: document.getElementById("mapped_industry").value.trim(),
+        match_keywords: parseListValue(document.getElementById("match_keywords").value),
+        aliases: parseListValue(document.getElementById("aliases").value),
+        active: document.getElementById("active").value.trim(),
+        priority: document.getElementById("priority").value.trim() || "7",
+        source: document.getElementById("source").value.trim() || "manual entry"
+      };
+
+      if(!record.company_name || !record.short_description || !record.product_description || !record.mapped_function || !record.mapped_industry || !record.match_keywords.length){
+        alert("Please fill in the required fields before adding the company.");
+        return;
+      }
+
+      const existingIndex = companies.findIndex(c => normalize(c.company_name) === normalize(record.company_name));
+      if(existingIndex >= 0){
+        companies[existingIndex] = record;
+      } else {
+        companies.push(record);
+      }
+
+      currentSourceName = "browser working dataset";
+      saveState();
+      updatePreview();
+      updateDatalists();
+      runMatch();
+
+      companyForm.reset();
+      document.getElementById("priority").value = "7";
+      document.getElementById("active").value = "yes";
+      document.getElementById("source").value = "manual entry";
+
+      alert("Company added to the active dataset.");
+    });
+
+    clearFormBtn.addEventListener("click", () => {
+      companyForm.reset();
+      document.getElementById("priority").value = "7";
+      document.getElementById("active").value = "yes";
+      document.getElementById("source").value = "manual entry";
+    });
+
+    let typingTimer = null;
+    queryInput.addEventListener("input", () => {
+      updateSuggestions();
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(runMatch, 220);
+    });
+
+    queryInput.addEventListener("focus", updateSuggestions);
+
+    // ──────────────────────────────────────────────────────────────────
+    // ChromaDB cosine similarity via Flask API (server.py on :5050)
+    // ──────────────────────────────────────────────────────────────────
+
+    // Same origin when served by Flask (local or Heroku).
+    // Falls back to localhost:5050 only when opening the file directly.
+    const API_BASE = (window.location.protocol === "file:" || window.location.hostname === "")
+      ? "http://localhost:5050"
+      : window.location.origin;
+    let   apiOnline  = false;
+    const modeBadge  = document.getElementById("modeBadge");
+    const modeLabel  = document.getElementById("modeLabel");
+    const refineNudge = document.getElementById("refinNudge");
+    const rebuildBtn = document.getElementById("rebuildBtn");
+
+    function setMode(online){
+      apiOnline = online;
+      if(online){
+        modeBadge.className = "mode-badge live";
+        modeLabel.textContent = "Cosine Similarity";
+      } else {
+        modeBadge.className = "mode-badge offline";
+        modeLabel.textContent = "Keyword";
+      }
+    }
+
+    async function checkApiHealth(){
+      try{
+        const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(1500) });
+        if(res.ok){
+          const data = await res.json();
+          setMode(true);
+          console.log(`[api] ChromaDB online — ${data.count} docs`);
+          return true;
+        }
+      } catch(_){}
+      setMode(false);
+      return false;
+    }
+
+    async function searchApi(query, k=5){
+      const url = `${API_BASE}/search?q=${encodeURIComponent(query)}&k=${k}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+      if(!res.ok) throw new Error(`API error ${res.status}`);
+      return res.json();  // { query, results, low_confidence, threshold }
+    }
+
+    function renderApiResults(data){
+      refineNudge.classList.toggle("hidden", !data.low_confidence);
+
+      if(!data.results || !data.results.length){
+        resultsEl.innerHTML = `
+          <div class="result">
+            <div class="result-top"><div>
+              <h3>No results found</h3>
+              <div class="path">ChromaDB returned no matches — try a different query.</div>
+            </div></div>
+          </div>`;
+        emptyStateEl.style.display = "none";
+        return;
+      }
+
+      resultsEl.innerHTML = data.results.slice(0, 3).map((r, i) => {
+        const pct = Math.round(r.score * 100);
+        const barW = Math.max(4, pct);
+        return `
+          <div class="result">
+            <div class="result-top">
+              <div>
+                <h3>${i + 1}. ${r.company_name}</h3>
+                <div class="path">${r.mapped_function} → ${r.mapped_industry}</div>
+              </div>
+              <div class="score cosine" title="Cosine similarity">${pct}%</div>
+            </div>
+            <p class="desc">${r.short_description}</p>
+            <div class="score-bar-wrap">
+              <div class="score-bar" style="width:${barW}%"></div>
+            </div>
+            <div class="meta" style="margin-top:8px;">
+              ${(r.match_keywords || "").split(",").slice(0,5).map(kw => kw.trim()).filter(Boolean).map(kw =>
+                `<span class="tag">${kw}</span>`).join("")}
+              ${r.website ? `<a href="${r.website}" target="_blank" rel="noopener"
+                style="margin-left:auto;font-size:12px;color:var(--muted);text-decoration:none;"
+                >↗ ${r.website.replace(/^https?:\/\//,"")}</a>` : ""}
+            </div>
+          </div>`;
+      }).join("");
+
+      emptyStateEl.style.display = "none";
+    }
+
+    // ── API-first runMatch (cosine similarity → keyword fallback) ────
+    async function runMatch(){
+      const query = queryInput.value.trim();
+      if(!query){
+        resultsEl.innerHTML = "";
+        refineNudge.classList.add("hidden");
+        emptyStateEl.style.display = "block";
+        return;
+      }
+
+      if(apiOnline){
+        try{
+          const data = await searchApi(query);
+          renderApiResults(data);
+          return;
+        } catch(err){
+          console.warn("[api] search failed, falling back to keyword:", err);
+          setMode(false);
+        }
+      }
+
+      // fallback — keyword scoring (original logic)
+      refineNudge.classList.add("hidden");
+      _localRunMatch_keyword(query);
+    }
+
+    // Rename the original synchronous body so we can call it as fallback
+    function _localRunMatch_keyword(query){
+      if(!query){
+        resultsEl.innerHTML = "";
+        emptyStateEl.style.display = "block";
+        return;
+      }
+      const scored = companies
+        .map(company => scoreCompany(query, company))
+        .filter(item => item.score > 0)
+        .sort((a,b) => b.score - a.score)
+        .slice(0, 3);
+
+      if(!scored.length){
+        resultsEl.innerHTML = `
+          <div class="result">
+            <div class="result-top"><div>
+              <h3>No strong match found</h3>
+              <div class="path">Try clearer verbs and nouns like recruiting, suppliers, anomalies, support, finance, legal, or energy.</div>
+            </div></div>
+          </div>`;
+        emptyStateEl.style.display = "none";
+        return;
+      }
+
+      resultsEl.innerHTML = scored.map((item, index) => {
+        const c = item.company;
+        return `
+          <div class="result">
+            <div class="result-top">
+              <div>
+                <h3>${index + 1}. ${c.company_name}</h3>
+                <div class="path">${c.mapped_function} → ${c.mapped_industry}</div>
+              </div>
+              <div class="score keyword">${item.score.toFixed(1)}</div>
+            </div>
+            <p class="desc">${c.short_description}</p>
+            <div class="meta">
+              ${item.matchedTerms.slice(0, 4).map(term => `<span class="tag">${term}</span>`).join("")}
+            </div>
+          </div>`;
+      }).join("");
+
+      emptyStateEl.style.display = "none";
+    }
+
+    // ── rebuild button ────────────────────────────────────────────────
+    rebuildBtn.addEventListener("click", async () => {
+      rebuildBtn.disabled = true;
+      rebuildBtn.textContent = "Rebuilding…";
+      try{
+        const res = await fetch(`${API_BASE}/rebuild`, {
+          method: "POST",
+          signal: AbortSignal.timeout(60000)
+        });
+        const data = await res.json();
+        alert(`DB rebuilt — ${data.count} documents indexed.`);
+        setMode(true);
+      } catch(err){
+        alert("Rebuild failed. Is the server running?\n\n" + err.message);
+      } finally{
+        rebuildBtn.disabled = false;
+        rebuildBtn.textContent = "Rebuild DB";
+      }
+    });
+
+    function initialize(){
+      const saved = localStorage.getItem(STORAGE_KEY_RECORDS);
+      const savedSource = localStorage.getItem(STORAGE_KEY_SOURCE);
+
+      if(saved){
+        try{
+          const records = JSON.parse(saved);
+          loadFromRecords(records, savedSource || "browser saved dataset");
+        } catch (err){
+          console.error(err);
+          loadFromRecords(defaultRecords, "embedded default dataset");
+        }
+      } else {
+        loadFromRecords(defaultRecords, "embedded default dataset");
+      }
+
+      // Check if ChromaDB server is up; poll every 10s
+      checkApiHealth();
+      setInterval(checkApiHealth, 10000);
+    }
+
+    initialize();
+  </script>
+</body>
+</html>
