@@ -1259,7 +1259,7 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
       document.getElementById("source").value = "manual entry";
     }
 
-    function handleCsvUpload(text, fileName){
+    async function handleCsvUpload(text, fileName){
       const rows = parseCsv(text);
       const incoming = toInternalRecords(rowsToObjects(rows));
 
@@ -1286,7 +1286,39 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
       updateSuggestions();
       runMatch();
 
-      showToast(`CSV merged — ${added} added, ${updated} updated, ${companies.length} total.`, "ok", 4000);
+      showToast(`CSV merged — ${added} added, ${updated} updated, ${companies.length} total.`, "ok", 3000);
+
+      // Push all uploaded companies to the API so they're embedded in ChromaDB
+      if(apiOnline && incomingMap.size > 0){
+        showToast(`Indexing ${incomingMap.size} companies into ChromaDB…`, "ok", 60000);
+
+        let indexed = 0;
+        let failed  = 0;
+        const entries = Array.from(incomingMap.values());
+
+        for(const r of entries){
+          try{
+            const res = await fetch(`${API_BASE}/companies`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                ...r,
+                match_keywords: Array.isArray(r.match_keywords) ? r.match_keywords.join(", ") : r.match_keywords,
+                aliases:        Array.isArray(r.aliases)        ? r.aliases.join(", ")        : r.aliases,
+              }),
+              signal: AbortSignal.timeout(15000),
+            });
+            if(res.ok) indexed++;
+            else failed++;
+          } catch(_){ failed++; }
+        }
+
+        if(failed === 0){
+          showToast(`✓ All ${indexed} companies indexed — searchable via cosine similarity now.`, "ok", 4000);
+        } else {
+          showToast(`Indexed ${indexed}/${entries.length} — ${failed} failed. Check server logs.`, "error", 5000);
+        }
+      }
     }
 
     uploadBtn.addEventListener("click", () => fileInput.click());
