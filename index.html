@@ -1012,7 +1012,7 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
 
     function escapeCsvValue(value){
       const str = String(value ?? "");
-      if(str.includes('"') || str.includes(",") || str.includes("\\n")){
+      if(str.includes('"') || str.includes(",") || str.includes("\n")){
         return '"' + str.replace(/"/g, '""') + '"';
       }
       return str;
@@ -1046,8 +1046,8 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
         } else if(char === "," && !inQuotes){
           row.push(current);
           current = "";
-        } else if((char === "\\n" || char === "\\r") && !inQuotes){
-          if(char === "\\r" && next === "\\n") i++;
+        } else if((char === "\n" || char === "\r") && !inQuotes){
+          if(char === "\r" && next === "\n") i++;
           row.push(current);
           rows.push(row);
           row = [];
