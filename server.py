@@ -17,6 +17,7 @@ Endpoints:
 """
 
 import os
+import re
 from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 
@@ -27,6 +28,11 @@ import chromadb
 
 from main import get_data, build_embed_text
 import db
+
+
+def _company_id(name: str) -> str:
+    """Deterministic, stable document ID from company name (slug)."""
+    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 app = Flask(__name__)
 CORS(app)
@@ -111,9 +117,11 @@ def build_store() -> Chroma:
         if build_embed_text(r).strip()
     ]
 
+    ids = [_company_id(r["company_name"]) for r in merged if build_embed_text(r).strip()]
+
     print(f"[store] Indexing {len(docs)} companies "
           f"({len(csv_active)} CSV + {len(pg_rows)} from Postgres)…")
-    store.add_documents(docs)
+    store.add_documents(docs, ids=ids)
     print(f"[store] Done.")
     return store
 
@@ -216,12 +224,13 @@ def add_company():
     # 2. Upsert into the live ChromaDB collection
     store = get_store()
     embed_text = build_embed_text(row)
+    doc_id = _company_id(row["company_name"])
 
-    # Remove any existing doc with this company name so we don't get duplicates
+    # Delete by deterministic ID (reliable; where-filter delete is broken in some versions)
     try:
-        store._collection.delete(where={"company_name": row["company_name"]})
-    except Exception:
-        pass  # collection may not support the filter yet — add proceeds anyway
+        store._collection.delete(ids=[doc_id])
+    except Exception as e:
+        print(f"[store] delete warning for '{doc_id}': {e}")
 
     doc = Document(
         page_content=embed_text,
@@ -231,7 +240,7 @@ def add_company():
             "match_keywords", "aliases", "priority",
         ]},
     )
-    store.add_documents([doc])
+    store.add_documents([doc], ids=[doc_id])
 
     return jsonify({
         "status":  "ok",
