@@ -1025,7 +1025,7 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
           HEADERS.map(h => escapeCsvValue(record[h] ?? "")).join(",")
         )
       ];
-      return lines.join("\\n");
+      return lines.join("\n");
     }
 
     function parseCsv(text){
