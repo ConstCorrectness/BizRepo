@@ -1261,8 +1261,32 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
 
     function handleCsvUpload(text, fileName){
       const rows = parseCsv(text);
-      const records = rowsToObjects(rows);
-      loadFromRecords(records, fileName || "uploaded CSV");
+      const incoming = toInternalRecords(rowsToObjects(rows));
+
+      // Deduplicate within the uploaded file itself — last row wins
+      const incomingMap = new Map();
+      incoming.forEach(r => incomingMap.set(normalize(r.company_name), r));
+
+      // Merge into the existing dataset:
+      // - Existing companies not in the upload stay as-is
+      // - Companies in the upload replace their existing counterpart (or are appended)
+      const merged = companies.filter(
+        c => !incomingMap.has(normalize(c.company_name))
+      );
+      incomingMap.forEach(r => merged.push(r));
+
+      const added   = incomingMap.size - companies.filter(c => incomingMap.has(normalize(c.company_name))).length;
+      const updated = incomingMap.size - added;
+
+      companies = merged;
+      currentSourceName = fileName || "uploaded CSV";
+      saveState();
+      updatePreview();
+      updateDatalists();
+      updateSuggestions();
+      runMatch();
+
+      showToast(`CSV merged — ${added} added, ${updated} updated, ${companies.length} total.`, "ok", 4000);
     }
 
     uploadBtn.addEventListener("click", () => fileInput.click());
