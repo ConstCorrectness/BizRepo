@@ -21,3 +21,6 @@ __pycache__/
 .vscode/
 .idea/
 *.swp
+
+# claude local config (may contain credentials)
+.claude/
