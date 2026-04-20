@@ -49,17 +49,13 @@ def ensure_db():
     global _db_ready
     if _db_ready:
         return
-    if os.environ.get("DATABASE_URL"):
-        try:
-            db.init_db()
-            db.ensure_unique_index()
-            _db_ready = True
-            print("[db] Postgres ready")
-        except Exception as e:
-            print(f"[db] WARNING: Postgres unavailable — {e}")
-    else:
-        print("[db] No DATABASE_URL — running without persistence")
+    try:
+        db.init_db()
+        db.ensure_unique_index()
         _db_ready = True
+        print(f"[db] ready — backend: {db.backend()}")
+    except Exception as e:
+        print(f"[db] WARNING: persistence unavailable — {e}")
 
 
 # ── vector store ──────────────────────────────────────────────────────
@@ -85,9 +81,9 @@ def build_store() -> Chroma:
     csv_rows = get_data("test.csv")
     csv_active = [r for r in csv_rows if r.get("active", "").lower() == "true"]
 
-    # Load persisted additions from Postgres
+    # Load persisted additions from the configured DB (SQLite local / Postgres Heroku)
     pg_rows: list[dict] = []
-    if _db_ready and os.environ.get("DATABASE_URL"):
+    if _db_ready:
         try:
             pg_rows = db.get_additions()
         except Exception as e:
@@ -120,7 +116,7 @@ def build_store() -> Chroma:
     ids = [_company_id(r["company_name"]) for r in merged if build_embed_text(r).strip()]
 
     print(f"[store] Indexing {len(docs)} companies "
-          f"({len(csv_active)} CSV + {len(pg_rows)} from Postgres)…")
+          f"({len(csv_active)} CSV + {len(pg_rows)} from {db.backend()})…")
     store.add_documents(docs, ids=ids)
     print(f"[store] Done.")
     return store
@@ -162,7 +158,8 @@ def health():
         return jsonify({
             "status": "ok",
             "count": count,
-            "db": bool(os.environ.get("DATABASE_URL")),
+            "db": _db_ready,
+            "db_backend": db.backend() if _db_ready else None,
         })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -214,8 +211,8 @@ def add_company():
         "source":             str(data.get("source", "manual entry")).strip(),
     }
 
-    # 1. Persist to Postgres
-    if _db_ready and os.environ.get("DATABASE_URL"):
+    # 1. Persist to the configured DB (SQLite local / Postgres Heroku)
+    if _db_ready:
         try:
             row = db.upsert_company(row)
         except Exception as e:
