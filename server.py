@@ -196,6 +196,77 @@ def add_company():
     }), 201
 
 
+@app.route("/upload_csv", methods=["POST"])
+def upload_csv():
+    """Bulk-merge companies from an uploaded CSV."""
+    if "file" not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    file = request.files["file"]
+    if not file or not file.filename:
+        return jsonify({"error": "No selected file"}), 400
+
+    try:
+        import io
+        import csv
+        stream = io.StringIO(file.stream.read().decode("utf-8-sig"), newline="")
+        reader = csv.DictReader(stream)
+        
+        # Robust header mapping: handle spaces and casing
+        raw_rows = list(reader)
+        if not raw_rows:
+            return jsonify({"status": "ok", "count": 0, "message": "Empty CSV"})
+
+        processed = []
+        for raw in raw_rows:
+            # Normalize keys
+            row = { k.strip().lower().replace(" ", "_"): v for k, v in raw.items() if k }
+            
+            # Map common variations to our internal FIELDS
+            clean = {
+                "company_name":        row.get("company_name") or row.get("company") or "",
+                "website":             row.get("website") or row.get("url") or "",
+                "short_description":   row.get("short_description") or row.get("description") or "",
+                "product_description": row.get("product_description") or "",
+                "mapped_function":     row.get("mapped_function") or row.get("function") or "",
+                "mapped_industry":     row.get("mapped_industry") or row.get("industry") or "",
+                "match_keywords":      row.get("match_keywords") or row.get("keywords") or "",
+                "aliases":             row.get("aliases") or "",
+                "active":              row.get("active") or "true",
+                "priority":            row.get("priority") or "5",
+                "source":              row.get("source") or file.filename,
+            }
+            
+            # Basic validation
+            if not clean["company_name"] or not clean["short_description"]:
+                continue
+            
+            # Normalize active
+            if str(clean["active"]).lower() in ["no", "false", "0"]:
+                clean["active"] = "false"
+            else:
+                clean["active"] = "true"
+                
+            processed.append(clean)
+
+        if not processed:
+            return jsonify({"error": "No valid rows found in CSV (need company_name and short_description)"}), 400
+
+        ensure_ready()
+        print(f"[upload] embedding {len(processed)} rows from {file.filename}…")
+        texts = [build_embed_text(r) for r in processed]
+        vectors = embed_many(texts)
+        
+        count = db.upsert_many(list(zip(processed, vectors)))
+        return jsonify({
+            "status": "ok",
+            "count": count,
+            "message": f"Successfully merged {count} companies."
+        })
+
+    except Exception as e:
+        return jsonify({"error": f"Upload failed: {e}"}), 500
+
+
 @app.route("/rebuild", methods=["POST"])
 def rebuild():
     """Re-embed every active row. Use after changing the embedding model."""

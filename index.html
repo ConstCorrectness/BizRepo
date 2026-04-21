@@ -1301,7 +1301,8 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
       document.getElementById("source").value = "manual entry";
     }
 
-    async function handleCsvUpload(text, fileName){
+    async function handleCsvUpload(file){
+      const text = await file.text();
       const rows = parseCsv(text);
       const incoming = toInternalRecords(rowsToObjects(rows));
 
@@ -1309,9 +1310,7 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
       const incomingMap = new Map();
       incoming.forEach(r => incomingMap.set(normalize(r.company_name), r));
 
-      // Merge into the existing dataset:
-      // - Existing companies not in the upload stay as-is
-      // - Companies in the upload replace their existing counterpart (or are appended)
+      // Merge into the existing dataset (local state):
       const merged = companies.filter(
         c => !incomingMap.has(normalize(c.company_name))
       );
@@ -1321,44 +1320,37 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
       const updated = incomingMap.size - added;
 
       companies = merged;
-      currentSourceName = fileName || "uploaded CSV";
+      currentSourceName = file.name || "uploaded CSV";
       saveState();
       updatePreview();
       updateDatalists();
       updateSuggestions();
       runMatch();
 
-      showToast(`CSV merged — ${added} added, ${updated} updated, ${companies.length} total.`, "ok", 3000);
+      showToast(`Local merge: ${added} added, ${updated} updated. Total: ${companies.length}.`, "ok", 3000);
 
-      // Push all uploaded companies to the API so they're embedded in ChromaDB
-      if(apiOnline && incomingMap.size > 0){
-        showToast(`Indexing ${incomingMap.size} companies into ChromaDB…`, "ok", 60000);
-
-        let indexed = 0;
-        let failed  = 0;
-        const entries = Array.from(incomingMap.values());
-
-        for(const r of entries){
-          try{
-            const res = await fetch(`${API_BASE}/companies`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                ...r,
-                match_keywords: Array.isArray(r.match_keywords) ? r.match_keywords.join(", ") : r.match_keywords,
-                aliases:        Array.isArray(r.aliases)        ? r.aliases.join(", ")        : r.aliases,
-              }),
-              signal: AbortSignal.timeout(15000),
-            });
-            if(res.ok) indexed++;
-            else failed++;
-          } catch(_){ failed++; }
-        }
-
-        if(failed === 0){
-          showToast(`✓ All ${indexed} companies indexed — searchable via cosine similarity now.`, "ok", 4000);
-        } else {
-          showToast(`Indexed ${indexed}/${entries.length} — ${failed} failed. Check server logs.`, "error", 5000);
+      // Push to server via bulk endpoint
+      if(apiOnline){
+        showToast(`Uploading ${file.name} to server for bulk indexing…`, "ok", 60000);
+        
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+          
+          const res = await fetch(`${API_BASE}/upload_csv`, {
+            method: "POST",
+            body: formData,
+            signal: AbortSignal.timeout(120000), // 2 min for large CSVs
+          });
+          
+          const data = await res.json();
+          if(!res.ok) throw new Error(data.error || "Upload failed");
+          
+          showToast(`✓ Server merge successful: ${data.count} rows indexed.`, "ok", 4500);
+          runMatch(); // Re-run search now that DB is updated
+        } catch(err) {
+          console.error("[api] bulk upload failed:", err);
+          showToast(`Server sync failed: ${err.message}. Data saved locally.`, "error", 6000);
         }
       }
     }
@@ -1368,12 +1360,7 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
     fileInput.addEventListener("change", (event) => {
       const file = event.target.files[0];
       if(!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        handleCsvUpload(String(e.target.result || ""), file.name);
-      };
-      reader.readAsText(file);
+      handleCsvUpload(file);
       fileInput.value = "";
     });
 
