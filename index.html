@@ -306,14 +306,16 @@
       border-radius:18px;
       overflow:auto;
       background:#fff;
-      max-height:520px;
+      max-height:600px;
     }
 
     table{
       width:100%;
-      border-collapse:collapse;
-      min-width:980px;
+      border-collapse:separate;
+      border-spacing:0;
+      min-width:1200px;
       font-size:13px;
+      table-layout: fixed;
     }
 
     thead th{
@@ -325,15 +327,20 @@
       padding:12px 10px;
       border-bottom:1px solid var(--line);
       font-weight:900;
-      z-index:2;
+      z-index:10;
+      white-space: nowrap;
     }
 
     tbody td{
       padding:10px;
       border-bottom:1px solid #edf1f6;
       color:var(--text);
-      vertical-align:top;
-      line-height:1.45;
+      vertical-align:middle;
+      line-height:1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 240px;
     }
 
     tbody tr:nth-child(even){
@@ -684,9 +691,10 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
                 <div class="full">
                   <label class="field-label" for="zone">Zone</label>
                   <select id="zone" name="zone">
+                    <option value="Auto" selected>✨ Auto-detect (AI inference)</option>
                     <option value="Zone A">Zone A – Apple mapped categories</option>
                     <option value="Zone B">Zone B – New consumer agentic categories</option>
-                    <option value="Zone C" selected>Zone C – B2B taxonomy</option>
+                    <option value="Zone C">Zone C – B2B taxonomy</option>
                     <option value="Zone D">Zone D – Specialized Deep-Domain Agents</option>
                   </select>
                 </div>
@@ -1098,7 +1106,7 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
         active: record.active || "yes",
         priority: record.priority || "7",
         source: record.source || "",
-        zone: record.zone || "Zone C"
+        zone: (record.zone && record.zone.trim()) ? record.zone : "Auto"
       })).filter(record => normalize(record.active) !== "no");
     }
 
