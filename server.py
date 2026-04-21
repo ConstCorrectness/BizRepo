@@ -21,7 +21,9 @@ import os
 from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 
-from langchain_openai.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 
 from main import get_data, build_embed_text
 import db
@@ -33,10 +35,11 @@ CORS(app)
 CONFIDENCE_THRESHOLD = 0.35
 
 _embeddings: OpenAIEmbeddings | None = None
+_chat: ChatOpenAI | None = None
 _ready = False
 
 
-# ── embeddings ────────────────────────────────────────────────────────
+# ── AI helpers ───────────────────────────────────────────────────────
 
 def get_embeddings() -> OpenAIEmbeddings:
     global _embeddings
@@ -45,12 +48,60 @@ def get_embeddings() -> OpenAIEmbeddings:
     return _embeddings
 
 
+def get_chat() -> ChatOpenAI:
+    global _chat
+    if _chat is None:
+        _chat = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    return _chat
+
+
 def embed_one(text: str) -> list[float]:
     return get_embeddings().embed_query(text)
 
 
 def embed_many(texts: list[str]) -> list[list[float]]:
     return get_embeddings().embed_documents(texts)
+
+
+def infer_zone(row: dict) -> str:
+    """Use LLM to classify a company into Zone A, B, C, or D based on descriptions."""
+    prompt = ChatPromptTemplate.from_template("""
+    Classify this company into exactly one of these four Zones:
+
+    Zone A: Traditional consumer apps (Books, Education, Games, Health, etc.). Marketing/UX are consumer-first.
+    Zone B: Consumer agentic tools (AI Assistants, Personal Automation, Learning/Tutoring). Primary buyer is consumer or solo operator. Starts with user intent/conversation.
+    Zone C: B2B / Enterprise. Business-first systems for organizations. Includes Sales, HR, IT, Operations, Marketing. Enterprise controls.
+    Zone D: Specialized Deep-Domain. Professional-grade for technical, legal, scientific, or highly regulated fields (Legal Experts, Scientific Research, Clinical Support, Software Architecture, Advanced Math).
+
+    Rules: 
+    - Zone C wins if organization-first. 
+    - Zone D wins if deep professional expertise for specialists (doctors, lawyers, scientists, architects, engineers).
+    - Zone B wins for consumer-facing "smart" agents.
+
+    Data:
+    Name: {company_name}
+    Short Description: {short_description}
+    Product Description: {product_description}
+    Function/Industry: {mapped_function} / {mapped_industry}
+
+    Respond ONLY with the zone ID: "Zone A", "Zone B", "Zone C", or "Zone D".
+    """)
+    
+    chain = prompt | get_chat() | StrOutputParser()
+    try:
+        zone = chain.invoke({
+            "company_name": row.get("company_name", ""),
+            "short_description": row.get("short_description", ""),
+            "product_description": row.get("product_description", ""),
+            "mapped_function": row.get("mapped_function", ""),
+            "mapped_industry": row.get("mapped_industry", ""),
+        })
+        zone = zone.strip()
+        if zone in ["Zone A", "Zone B", "Zone C", "Zone D"]:
+            return zone
+    except Exception as e:
+        print(f"[infer] error: {e}")
+    return "Zone C" # fallback
 
 
 # ── startup: init schema + one-time CSV bootstrap ─────────────────────
@@ -194,8 +245,13 @@ def add_company():
         "active":              "true",
         "priority":            str(data.get("priority", "5")).strip(),
         "source":              str(data.get("source", "manual entry")).strip(),
-        "zone":                str(data.get("zone", "Zone C")).strip(),
+        "zone":                str(data.get("zone", "")).strip(),
     }
+
+    if not row["zone"] or row["zone"] == "Auto":
+        print(f"[infer] inferring zone for {row['company_name']}…")
+        row["zone"] = infer_zone(row)
+        print(f"[infer] result: {row['zone']}")
 
     ensure_ready()
     embedding = embed_one(build_embed_text(row))
@@ -208,6 +264,7 @@ def add_company():
     return jsonify({
         "status":  "ok",
         "company": stored["company_name"],
+        "record":  stored,
         "indexed": True,
     }), 201
 
@@ -250,12 +307,15 @@ def upload_csv():
                 "active":              row.get("active") or "true",
                 "priority":            row.get("priority") or "5",
                 "source":              row.get("source") or file.filename,
-                "zone":                row.get("zone") or "Zone C",
+                "zone":                row.get("zone") or "Auto",
             }
             
             # Basic validation
             if not clean["company_name"] or not clean["short_description"]:
                 continue
+
+            if clean["zone"] == "Auto":
+                clean["zone"] = infer_zone(clean)
             
             # Normalize active
             if str(clean["active"]).lower() in ["no", "false", "0"]:
@@ -292,7 +352,7 @@ def upload_batch():
         return jsonify({"error": "Expected a list of companies"}), 400
 
     if not data:
-        return jsonify({"status": "ok", "count": 0})
+        return jsonify({"status": "ok", "count": 0, "records": []})
 
     processed = []
     for raw in data:
@@ -318,24 +378,27 @@ def upload_batch():
             "active":              row.get("active") or "true",
             "priority":            row.get("priority") or "5",
             "source":              row.get("source") or "batch upload",
-            "zone":                row.get("zone") or "Zone C",
+            "zone":                row.get("zone") or "Auto",
         }
         
         if not clean["company_name"] or not clean["short_description"]:
             continue
+
+        if clean["zone"] == "Auto":
+            clean["zone"] = infer_zone(clean)
             
         clean["active"] = "false" if str(clean["active"]).lower() in ["no", "false", "0"] else "true"
         processed.append(clean)
 
     if not processed:
-        return jsonify({"status": "ok", "count": 0})
+        return jsonify({"status": "ok", "count": 0, "records": []})
 
     ensure_ready()
     texts = [build_embed_text(r) for r in processed]
     vectors = embed_many(texts)
     
     count = db.upsert_many(list(zip(processed, vectors)))
-    return jsonify({"status": "ok", "count": count})
+    return jsonify({"status": "ok", "count": count, "records": processed})
 
 
 @app.route("/rebuild", methods=["POST"])
