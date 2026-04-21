@@ -1766,6 +1766,15 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
       const industryWrap = document.getElementById("industryWrap");
       const industrySelect = document.getElementById("mapped_industry");
 
+      if(zone === "Auto"){
+        functionWrap.style.display = "block";
+        functionLabel.textContent = "Mapped Function";
+        functionSelect.innerHTML = `<option value="">(Auto-filled by AI)</option>`;
+        industryWrap.style.display = "block";
+        industrySelect.innerHTML = `<option value="">(Auto-filled by AI)</option>`;
+        return;
+      }
+
       const config = TAXONOMY[zone];
 
       if(zone === "Zone C"){
