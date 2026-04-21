@@ -281,6 +281,14 @@ def upload_batch():
     for raw in data:
         # Normalize keys and map to FIELDS
         row = { k.strip().lower().replace(" ", "_"): v for k, v in raw.items() if k }
+        
+        # In batch upload from frontend, match_keywords/aliases might be lists
+        mk = row.get("match_keywords") or row.get("keywords") or ""
+        if isinstance(mk, list): mk = ", ".join(mk)
+        
+        al = row.get("aliases") or ""
+        if isinstance(al, list): al = ", ".join(al)
+
         clean = {
             "company_name":        row.get("company_name") or row.get("company") or "",
             "website":             row.get("website") or row.get("url") or "",
@@ -288,8 +296,8 @@ def upload_batch():
             "product_description": row.get("product_description") or "",
             "mapped_function":     row.get("mapped_function") or row.get("function") or "",
             "mapped_industry":     row.get("mapped_industry") or row.get("industry") or "",
-            "match_keywords":      row.get("match_keywords") or row.get("keywords") or "",
-            "aliases":             row.get("aliases") or "",
+            "match_keywords":      mk,
+            "aliases":             al,
             "active":              row.get("active") or "true",
             "priority":            row.get("priority") or "5",
             "source":              row.get("source") or "batch upload",
