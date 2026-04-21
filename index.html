@@ -681,6 +681,16 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
 
             <form id="companyForm">
               <div class="form-grid">
+                <div class="full">
+                  <label class="field-label" for="zone">Zone</label>
+                  <select id="zone" name="zone">
+                    <option value="Zone A">Zone A – Apple mapped categories</option>
+                    <option value="Zone B">Zone B – New consumer agentic categories</option>
+                    <option value="Zone C" selected>Zone C – B2B taxonomy</option>
+                    <option value="Zone D">Zone D – Specialized Deep-Domain Agents</option>
+                  </select>
+                </div>
+
                 <div>
                   <label class="field-label" for="company_name">Company Name</label>
                   <input id="company_name" name="company_name" required />
@@ -691,14 +701,14 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
                   <input id="website" name="website" placeholder="https://example.com" />
                 </div>
 
-                <div>
-                  <label class="field-label" for="mapped_function">Mapped Function</label>
-                  <input id="mapped_function" name="mapped_function" list="functionOptions" required />
+                <div id="functionWrap">
+                  <label class="field-label" id="functionLabel" for="mapped_function">Mapped Function</label>
+                  <select id="mapped_function" name="mapped_function"></select>
                 </div>
 
-                <div>
+                <div id="industryWrap">
                   <label class="field-label" for="mapped_industry">Mapped Industry</label>
-                  <input id="mapped_industry" name="mapped_industry" list="industryOptions" required />
+                  <select id="mapped_industry" name="mapped_industry"></select>
                 </div>
 
                 <div class="full">
@@ -842,8 +852,29 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
       "aliases",
       "active",
       "priority",
-      "source"
+      "source",
+      "zone"
     ];
+
+    const TAXONOMY = {
+      "Zone A": {
+        label: "Zone A – Apple mapped categories",
+        categories: ["Books", "Business", "Developer Tools", "Education", "Entertainment", "Finance", "Food and Drink", "Games", "Graphics and Design", "Health and Fitness", "Lifestyle", "Medical", "Music", "Navigation", "News", "Photo and Video", "Productivity", "Reference", "Shopping", "Social Networking", "Sports", "Travel", "Utilities", "Weather"]
+      },
+      "Zone B": {
+        label: "Zone B – New consumer agentic categories",
+        categories: ["AI Assistants and Companions", "Personal Automation and Agents", "Knowledge and Research Agents", "Career and Job Agents", "Creator and Content Agents", "Learning and Tutoring Agents", "Health Support Agents", "Life Admin and Planning Agents", "Shopping and Deal Agents", "Travel Planning Agents", "Safety and Verification Helpers", "Community and Relationship Agents"]
+      },
+      "Zone C": {
+        label: "Zone C – B2B taxonomy",
+        functions: ["Sales and Revenue", "Marketing and Growth", "Customer Support and Success", "Operations and Process Automation", "Finance and Accounting", "Legal and Compliance", "Human Resources and Recruiting", "IT and Infrastructure", "Security and Risk", "Data and Analytics", "Product and Engineering", "Procurement and Vendor Management"],
+        industries: ["Healthcare and Clinics", "Finance and Banking", "Insurance", "Real Estate and Construction", "Retail and Ecommerce", "Logistics and Transportation", "Manufacturing", "Energy and Utilities", "Education and Training", "Media and Entertainment", "Hospitality and Food Service", "Government and Public Sector", "General Business"]
+      },
+      "Zone D": {
+        label: "Zone D – Specialized Deep-Domain Agents",
+        categories: ["Legal & Regulatory Experts", "Scientific Research & Discovery", "Clinical & Diagnostic Support", "Quantitative Finance & Risk", "Engineering & CAD Agents", "Software Architecture & Logic", "Environmental & Climate Analytics", "Policy & Socio-Economic Impact", "Advanced Mathematics & Logic", "Strategic Intelligence & OSINT", "Professional Education & Certification", "Heritage, Language & Culture Scholars"]
+      }
+    };
 
     const defaultRecords = [
       {
@@ -1066,7 +1097,8 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
         aliases: parseListValue(record.aliases),
         active: record.active || "yes",
         priority: record.priority || "7",
-        source: record.source || ""
+        source: record.source || "",
+        zone: record.zone || "Zone C"
       })).filter(record => normalize(record.active) !== "no");
     }
 
@@ -1082,7 +1114,8 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
         aliases: (record.aliases || []).join(", "),
         active: record.active || "yes",
         priority: record.priority || "7",
-        source: record.source || ""
+        source: record.source || "",
+        zone: record.zone || "Zone C"
       }));
     }
 
@@ -1718,6 +1751,36 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
       return res.json();  // { query, results, low_confidence, threshold }
     }
 
+    function updateTaxonomyUI(){
+      const zone = document.getElementById("zone").value;
+      const functionWrap = document.getElementById("functionWrap");
+      const functionSelect = document.getElementById("mapped_function");
+      const functionLabel = document.getElementById("functionLabel");
+      const industryWrap = document.getElementById("industryWrap");
+      const industrySelect = document.getElementById("mapped_industry");
+
+      const config = TAXONOMY[zone];
+
+      if(zone === "Zone C"){
+        functionWrap.style.display = "block";
+        functionLabel.textContent = "Mapped Function";
+        industryWrap.style.display = "block";
+        
+        functionSelect.innerHTML = config.functions.map(f => `<option value="${f}">${f}</option>`).join("");
+        industrySelect.innerHTML = config.industries.map(i => `<option value="${i}">${i}</option>`).join("");
+      } else {
+        functionWrap.style.display = "block";
+        functionLabel.textContent = "Category";
+        industryWrap.style.display = "none";
+        industrySelect.innerHTML = `<option value="">N/A</option>`;
+        
+        functionSelect.innerHTML = config.categories.map(c => `<option value="${c}">${c}</option>`).join("");
+      }
+    }
+
+    document.getElementById("zone").addEventListener("change", updateTaxonomyUI);
+    updateTaxonomyUI();
+
     function renderApiResults(data){
       refineNudge.classList.toggle("hidden", !data.low_confidence);
       drawVisualizer(data.results, false);
@@ -1737,12 +1800,17 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
       resultsEl.innerHTML = data.results.slice(0, 3).map((r, i) => {
         const pct = Math.round(r.score * 100);
         const barW = Math.max(4, pct);
+        const path = r.zone === "Zone C" 
+          ? `${r.mapped_function} → ${r.mapped_industry}`
+          : r.mapped_function;
+
         return `
           <div class="result">
             <div class="result-top">
               <div>
+                <div class="tag" style="margin-bottom:6px; background:var(--navy); color:#fff; border:none;">${r.zone || "Zone C"}</div>
                 <h3>${i + 1}. ${r.company_name}</h3>
-                <div class="path">${r.mapped_function} → ${r.mapped_industry}</div>
+                <div class="path">${path}</div>
               </div>
               <div class="score cosine" title="Cosine similarity">${pct}%</div>
             </div>

@@ -194,6 +194,7 @@ def add_company():
         "active":              "true",
         "priority":            str(data.get("priority", "5")).strip(),
         "source":              str(data.get("source", "manual entry")).strip(),
+        "zone":                str(data.get("zone", "Zone C")).strip(),
     }
 
     ensure_ready()
@@ -249,6 +250,7 @@ def upload_csv():
                 "active":              row.get("active") or "true",
                 "priority":            row.get("priority") or "5",
                 "source":              row.get("source") or file.filename,
+                "zone":                row.get("zone") or "Zone C",
             }
             
             # Basic validation
@@ -316,6 +318,7 @@ def upload_batch():
             "active":              row.get("active") or "true",
             "priority":            row.get("priority") or "5",
             "source":              row.get("source") or "batch upload",
+            "zone":                row.get("zone") or "Zone C",
         }
         
         if not clean["company_name"] or not clean["short_description"]:

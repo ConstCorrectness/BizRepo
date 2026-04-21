@@ -28,7 +28,7 @@ EMBED_DIM = 1536  # text-embedding-3-small
 FIELDS = [
     "company_name", "website", "short_description", "product_description",
     "mapped_function", "mapped_industry", "match_keywords", "aliases",
-    "active", "priority", "source",
+    "active", "priority", "source", "zone"
 ]
 
 
@@ -80,12 +80,16 @@ def init_db() -> None:
                 priority            TEXT DEFAULT '5',
                 source              TEXT DEFAULT 'manual entry',
                 embedding           vector({EMBED_DIM}),
-                created_at          TIMESTAMPTZ DEFAULT NOW()
+                created_at          TIMESTAMPTZ DEFAULT NOW(),
+                zone                TEXT DEFAULT 'Zone C'
             )
         """)
         # Migration: add embedding column to pre-existing tables from the old design.
         cur.execute(
             f"ALTER TABLE companies ADD COLUMN IF NOT EXISTS embedding vector({EMBED_DIM})"
+        )
+        cur.execute(
+            "ALTER TABLE companies ADD COLUMN IF NOT EXISTS zone TEXT DEFAULT 'Zone C'"
         )
         cur.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS companies_name_unique
