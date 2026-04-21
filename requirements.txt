@@ -1,7 +1,7 @@
 flask>=3.0
 flask-cors>=5.0
 gunicorn>=21.0
-chromadb==1.5.7
-langchain-chroma>=0.2.2
-langchain-openai>=1.1.7
 psycopg2-binary>=2.9
+pgvector>=0.3
+langchain-openai>=1.1.7
+langchain-core>=0.3

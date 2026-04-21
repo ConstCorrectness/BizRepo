@@ -1,18 +1,29 @@
 """
-Persistence for manually added companies.
+Single-store persistence: Postgres + pgvector.
 
-Uses SQLite locally (file at ./companies.db) and Postgres on Heroku
-(when DATABASE_URL is set). Same public interface either way:
+All company data AND embeddings live in one `companies` table. Search is an
+SQL query against the hnsw-indexed `embedding` column.
 
-    init_db()
-    ensure_unique_index()
-    get_additions() -> list[dict]
-    upsert_company(row: dict) -> dict
+Local dev: run `docker compose up -d` and `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5434/omni`.
+Heroku:    DATABASE_URL is set automatically by the Postgres addon.
+
+Public interface:
+    init_db()                               — extension, table, index
+    is_empty() -> bool                      — true if no active rows
+    get_all() -> list[dict]                 — all active rows (no embedding)
+    upsert_company(row, embedding) -> dict  — single write, includes embedding
+    search(query_embedding, k) -> list[(dict, score)]
+    backend() -> str
 """
 
 import os
-import sqlite3
 
+import psycopg2
+from psycopg2.extras import RealDictCursor, execute_values
+from pgvector.psycopg2 import register_vector
+
+
+EMBED_DIM = 1536  # text-embedding-3-small
 
 FIELDS = [
     "company_name", "website", "short_description", "product_description",
@@ -20,60 +31,44 @@ FIELDS = [
     "active", "priority", "source",
 ]
 
-IS_POSTGRES = bool(os.environ.get("DATABASE_URL"))
-SQLITE_PATH = os.environ.get("SQLITE_PATH", "./companies.db")
 
-
-if IS_POSTGRES:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-
-
-def _pg_conn():
-    url = os.environ["DATABASE_URL"].replace("postgres://", "postgresql://", 1)
+def _raw_conn():
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        raise RuntimeError(
+            "DATABASE_URL is not set. Run `docker compose up -d` and export "
+            "DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5434/omni"
+        )
+    # Heroku's DATABASE_URL uses the legacy postgres:// scheme
+    url = url.replace("postgres://", "postgresql://", 1)
     return psycopg2.connect(url)
 
 
-def _sqlite_conn():
-    conn = sqlite3.connect(SQLITE_PATH)
-    conn.row_factory = sqlite3.Row
+def _conn():
+    """Connection with pgvector adapters registered. Requires the extension to exist."""
+    conn = _raw_conn()
+    register_vector(conn)
     return conn
 
 
 def backend() -> str:
-    return "postgres" if IS_POSTGRES else f"sqlite ({SQLITE_PATH})"
+    return "postgres+pgvector"
 
 
 # ── init ──────────────────────────────────────────────────────────────
 
 def init_db() -> None:
-    if IS_POSTGRES:
-        with _pg_conn() as conn, conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS companies (
-                    id               SERIAL PRIMARY KEY,
-                    company_name     TEXT NOT NULL,
-                    website          TEXT DEFAULT '',
-                    short_description  TEXT DEFAULT '',
-                    product_description TEXT DEFAULT '',
-                    mapped_function  TEXT DEFAULT '',
-                    mapped_industry  TEXT DEFAULT '',
-                    match_keywords   TEXT DEFAULT '',
-                    aliases          TEXT DEFAULT '',
-                    active           TEXT DEFAULT 'true',
-                    priority         TEXT DEFAULT '5',
-                    source           TEXT DEFAULT 'manual entry',
-                    created_at       TIMESTAMPTZ DEFAULT NOW()
-                )
-            """)
-            conn.commit()
-        return
+    # Create extension on a raw connection — pgvector adapters need the type
+    # to already exist before register_vector() runs.
+    with _raw_conn() as conn, conn.cursor() as cur:
+        cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        conn.commit()
 
-    with _sqlite_conn() as conn:
-        conn.execute("""
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute(f"""
             CREATE TABLE IF NOT EXISTS companies (
-                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-                company_name        TEXT NOT NULL COLLATE NOCASE,
+                id                  SERIAL PRIMARY KEY,
+                company_name        TEXT NOT NULL,
                 website             TEXT DEFAULT '',
                 short_description   TEXT DEFAULT '',
                 product_description TEXT DEFAULT '',
@@ -84,94 +79,118 @@ def init_db() -> None:
                 active              TEXT DEFAULT 'true',
                 priority            TEXT DEFAULT '5',
                 source              TEXT DEFAULT 'manual entry',
-                created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                embedding           vector({EMBED_DIM}),
+                created_at          TIMESTAMPTZ DEFAULT NOW()
             )
         """)
-        conn.commit()
-
-
-def ensure_unique_index() -> None:
-    if IS_POSTGRES:
-        with _pg_conn() as conn, conn.cursor() as cur:
-            cur.execute("""
-                CREATE UNIQUE INDEX IF NOT EXISTS companies_name_unique
-                ON companies (lower(company_name))
-            """)
-            conn.commit()
-        return
-
-    with _sqlite_conn() as conn:
-        # COLLATE NOCASE on the column already makes this case-insensitive.
-        conn.execute("""
+        cur.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS companies_name_unique
-            ON companies (company_name COLLATE NOCASE)
+            ON companies (lower(company_name))
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS companies_embedding_hnsw
+            ON companies USING hnsw (embedding vector_cosine_ops)
         """)
         conn.commit()
 
 
 # ── reads ─────────────────────────────────────────────────────────────
 
-def get_additions() -> list[dict]:
-    """All active companies from the persistence store."""
-    if IS_POSTGRES:
-        with _pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                f"SELECT {', '.join(FIELDS)} FROM companies "
-                "WHERE lower(active) = 'true' ORDER BY created_at"
-            )
-            return [dict(r) for r in cur.fetchall()]
+def is_empty() -> bool:
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM companies WHERE lower(active) = 'true'")
+        return cur.fetchone()[0] == 0
 
-    with _sqlite_conn() as conn:
-        cur = conn.execute(
+
+def count_active() -> int:
+    with _conn() as conn, conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM companies WHERE lower(active) = 'true'")
+        return cur.fetchone()[0]
+
+
+def get_all() -> list[dict]:
+    """All active companies (without the embedding column)."""
+    with _conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
             f"SELECT {', '.join(FIELDS)} FROM companies "
             "WHERE lower(active) = 'true' ORDER BY created_at"
         )
         return [dict(r) for r in cur.fetchall()]
 
 
+def search(query_embedding: list[float], k: int = 5) -> list[tuple[dict, float]]:
+    """
+    Cosine similarity search. Returns (row_dict, score) where score = 1 - distance
+    (higher is more similar, matches the old Chroma relevance-score semantics).
+    """
+    with _conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            f"""
+            SELECT {', '.join(FIELDS)},
+                   1 - (embedding <=> %s::vector) AS score
+            FROM companies
+            WHERE lower(active) = 'true' AND embedding IS NOT NULL
+            ORDER BY embedding <=> %s::vector
+            LIMIT %s
+            """,
+            (query_embedding, query_embedding, k),
+        )
+        return [(dict(r), float(r["score"])) for r in cur.fetchall()]
+
+
 # ── writes ────────────────────────────────────────────────────────────
 
-def upsert_company(row: dict) -> dict:
-    """Insert or update by company_name (case-insensitive). Returns the stored row."""
+def upsert_company(row: dict, embedding: list[float]) -> dict:
+    """Insert or update by company_name (case-insensitive). Single atomic write."""
     payload = {f: row.get(f, "") for f in FIELDS}
+    payload["embedding"] = embedding
 
-    if IS_POSTGRES:
-        with _pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                f"""
-                INSERT INTO companies ({', '.join(FIELDS)})
-                VALUES ({', '.join(f'%({f})s' for f in FIELDS)})
-                ON CONFLICT (lower(company_name))
-                DO UPDATE SET
-                    {', '.join(f'{f} = EXCLUDED.{f}' for f in FIELDS if f != 'company_name')},
-                    created_at = NOW()
-                RETURNING {', '.join(FIELDS)}
-                """,
-                payload,
-            )
-            result = dict(cur.fetchone())
-            conn.commit()
-        return result
+    cols = FIELDS + ["embedding"]
+    updates = ', '.join(f'{c} = EXCLUDED.{c}' for c in cols if c != 'company_name')
 
-    with _sqlite_conn() as conn:
-        placeholders = ', '.join(f':{f}' for f in FIELDS)
-        update_cols  = ', '.join(
-            f'{f} = excluded.{f}' for f in FIELDS if f != 'company_name'
-        )
-        conn.execute(
+    with _conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
             f"""
-            INSERT INTO companies ({', '.join(FIELDS)})
-            VALUES ({placeholders})
-            ON CONFLICT(company_name) DO UPDATE SET
-                {update_cols},
-                created_at = CURRENT_TIMESTAMP
+            INSERT INTO companies ({', '.join(cols)})
+            VALUES ({', '.join(f'%({c})s' for c in cols)})
+            ON CONFLICT (lower(company_name))
+            DO UPDATE SET
+                {updates},
+                created_at = NOW()
+            RETURNING {', '.join(FIELDS)}
             """,
             payload,
         )
+        result = dict(cur.fetchone())
         conn.commit()
-        cur = conn.execute(
-            f"SELECT {', '.join(FIELDS)} FROM companies "
-            "WHERE company_name = :company_name COLLATE NOCASE",
-            {"company_name": payload["company_name"]},
+    return result
+
+
+def upsert_many(rows_with_embeddings: list[tuple[dict, list[float]]]) -> int:
+    """Bulk upsert. Used for CSV bootstrap and /rebuild."""
+    if not rows_with_embeddings:
+        return 0
+
+    cols = FIELDS + ["embedding"]
+    updates = ', '.join(f'{c} = EXCLUDED.{c}' for c in cols if c != 'company_name')
+
+    values = [
+        tuple(row.get(f, "") for f in FIELDS) + (embedding,)
+        for row, embedding in rows_with_embeddings
+    ]
+
+    with _conn() as conn, conn.cursor() as cur:
+        execute_values(
+            cur,
+            f"""
+            INSERT INTO companies ({', '.join(cols)})
+            VALUES %s
+            ON CONFLICT (lower(company_name))
+            DO UPDATE SET
+                {updates},
+                created_at = NOW()
+            """,
+            values,
         )
-        return dict(cur.fetchone())
+        conn.commit()
+    return len(values)

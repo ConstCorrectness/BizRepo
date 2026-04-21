@@ -1,147 +1,90 @@
 """
-Flask API — ChromaDB cosine similarity search + serves index.html.
+Flask API — Postgres + pgvector cosine similarity search. Serves index.html.
 
-Local:  python server.py          → http://localhost:5050
-Heroku: gunicorn server:app       → $PORT (set automatically)
+Local:  docker compose up -d && python server.py   → http://localhost:5050
+Heroku: gunicorn server:app                         → $PORT
 
 Required env vars:
     OPENAI_API_KEY   — OpenAI key for embeddings
-    DATABASE_URL     — set automatically by Heroku Postgres addon
+    DATABASE_URL     — Postgres connection string (set automatically on Heroku)
 
 Endpoints:
-    GET  /                       → index.html
-    GET  /health                 → { status, count, db }
-    GET  /search?q=...&k=5       → { query, results, low_confidence }
-    POST /companies              → add/update a company (persists to Postgres + indexes live)
-    POST /rebuild                → wipe ChromaDB and re-index from test.csv + Postgres
+    GET  /                 → index.html
+    GET  /health           → { status, count, db }
+    GET  /search?q=...&k=5 → { query, results, low_confidence }
+    POST /companies        → add/update a company (single write to Postgres)
+    POST /rebuild          → re-embed every row (e.g. after an embedding-model change)
 """
 
 import os
-import re
+
 from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 
 from langchain_openai.embeddings import OpenAIEmbeddings
-from langchain_chroma import Chroma
-from langchain_core.documents import Document
-import chromadb
 
 from main import get_data, build_embed_text
 import db
 
-
-def _company_id(name: str) -> str:
-    """Deterministic, stable document ID from company name (slug)."""
-    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 app = Flask(__name__)
 CORS(app)
 
 CONFIDENCE_THRESHOLD = 0.35
 
-_store: Chroma | None = None
-_db_ready = False
+_embeddings: OpenAIEmbeddings | None = None
+_ready = False
 
 
-# ── DB init ───────────────────────────────────────────────────────────
+# ── embeddings ────────────────────────────────────────────────────────
 
-def ensure_db():
-    global _db_ready
-    if _db_ready:
+def get_embeddings() -> OpenAIEmbeddings:
+    global _embeddings
+    if _embeddings is None:
+        _embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+    return _embeddings
+
+
+def embed_one(text: str) -> list[float]:
+    return get_embeddings().embed_query(text)
+
+
+def embed_many(texts: list[str]) -> list[list[float]]:
+    return get_embeddings().embed_documents(texts)
+
+
+# ── startup: init schema + one-time CSV bootstrap ─────────────────────
+
+def ensure_ready() -> None:
+    global _ready
+    if _ready:
         return
-    try:
-        db.init_db()
-        db.ensure_unique_index()
-        _db_ready = True
-        print(f"[db] ready — backend: {db.backend()}")
-    except Exception as e:
-        print(f"[db] WARNING: persistence unavailable — {e}")
+
+    db.init_db()
+
+    if db.is_empty():
+        _bootstrap_from_csv("test.csv")
+
+    _ready = True
+    print(f"[store] ready — {db.count_active()} companies indexed")
 
 
-# ── vector store ──────────────────────────────────────────────────────
-
-def build_store() -> Chroma:
-    """
-    Build a fresh EphemeralClient from:
-      1. test.csv  (base dataset, committed to git)
-      2. Postgres  (manually added companies, survives dyno restarts)
-    """
-    ensure_db()
-
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-    client = chromadb.EphemeralClient()
-    store = Chroma(
-        client=client,
-        collection_name="companies",
-        embedding_function=embeddings,
-        collection_metadata={"hnsw:space": "cosine"},
-    )
-
-    # Load base rows from CSV
-    csv_rows = get_data("test.csv")
-    csv_active = [r for r in csv_rows if r.get("active", "").lower() == "true"]
-
-    # Load persisted additions from the configured DB (SQLite local / Postgres Heroku)
-    pg_rows: list[dict] = []
-    if _db_ready:
-        try:
-            pg_rows = db.get_additions()
-        except Exception as e:
-            print(f"[db] Could not load additions: {e}")
-
-    # Merge — Postgres additions override CSV rows with same name
-    csv_names = {r["company_name"].lower() for r in csv_active}
-    merged = list(csv_active)
-    for row in pg_rows:
-        if row["company_name"].lower() not in csv_names:
-            merged.append(row)
-        # if it IS in CSV we still take the Postgres version (user edited it)
-        else:
-            merged = [row if r["company_name"].lower() == row["company_name"].lower()
-                      else r for r in merged]
-
-    docs = [
-        Document(
-            page_content=build_embed_text(r),
-            metadata={k: r.get(k, "") for k in [
-                "company_name", "website", "short_description",
-                "mapped_function", "mapped_industry",
-                "match_keywords", "aliases", "priority",
-            ]},
-        )
-        for r in merged
-        if build_embed_text(r).strip()
+def _bootstrap_from_csv(path: str) -> None:
+    rows = get_data(path)
+    active = [
+        r for r in rows
+        if r.get("active", "").lower() == "true" and build_embed_text(r).strip()
     ]
+    if not active:
+        print(f"[bootstrap] no active rows in {path} — skipping")
+        return
 
-    ids = [_company_id(r["company_name"]) for r in merged if build_embed_text(r).strip()]
+    print(f"[bootstrap] embedding {len(active)} companies from {path}…")
+    texts = [build_embed_text(r) for r in active]
+    vectors = embed_many(texts)
 
-    print(f"[store] Indexing {len(docs)} companies "
-          f"({len(csv_active)} CSV + {len(pg_rows)} from {db.backend()})…")
-    store.add_documents(docs, ids=ids)
-    print(f"[store] Done.")
-    return store
-
-
-def get_store() -> Chroma:
-    global _store
-    if _store is None:
-        _store = build_store()
-    return _store
-
-
-def _doc_to_result(doc: Document, score: float) -> dict:
-    m = doc.metadata
-    return {
-        "company_name":      m.get("company_name", ""),
-        "website":           m.get("website", ""),
-        "short_description": m.get("short_description", ""),
-        "mapped_function":   m.get("mapped_function", ""),
-        "mapped_industry":   m.get("mapped_industry", ""),
-        "match_keywords":    m.get("match_keywords", ""),
-        "aliases":           m.get("aliases", ""),
-        "priority":          m.get("priority", ""),
-        "score":             round(float(score), 4),
-    }
+    db.upsert_many(list(zip(active, vectors)))
+    print(f"[bootstrap] done.")
 
 
 # ── routes ────────────────────────────────────────────────────────────
@@ -154,12 +97,12 @@ def index():
 @app.route("/health")
 def health():
     try:
-        count = get_store()._collection.count()
+        ensure_ready()
         return jsonify({
-            "status": "ok",
-            "count": count,
-            "db": _db_ready,
-            "db_backend": db.backend() if _db_ready else None,
+            "status":     "ok",
+            "count":      db.count_active(),
+            "db":         True,
+            "db_backend": db.backend(),
         })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -172,8 +115,24 @@ def search():
     if not query:
         return jsonify({"error": 'param "q" required'}), 400
 
-    raw = get_store().similarity_search_with_relevance_scores(query, k=k)
-    results = [_doc_to_result(doc, score) for doc, score in raw]
+    ensure_ready()
+    query_vec = embed_one(query)
+    raw = db.search(query_vec, k=k)
+
+    results = [
+        {
+            "company_name":      row.get("company_name", ""),
+            "website":           row.get("website", ""),
+            "short_description": row.get("short_description", ""),
+            "mapped_function":   row.get("mapped_function", ""),
+            "mapped_industry":   row.get("mapped_industry", ""),
+            "match_keywords":    row.get("match_keywords", ""),
+            "aliases":           row.get("aliases", ""),
+            "priority":          row.get("priority", ""),
+            "score":             round(score, 4),
+        }
+        for row, score in raw
+    ]
     top = results[0]["score"] if results else 0.0
 
     return jsonify({
@@ -186,10 +145,7 @@ def search():
 
 @app.route("/companies", methods=["POST"])
 def add_company():
-    """
-    Add or update a company.
-    Persists to Postgres, then embeds + upserts into the live ChromaDB collection.
-    """
+    """Add or update a company. One atomic write to Postgres, embedding included."""
     data = request.get_json(force=True)
 
     required = ["company_name", "short_description", "mapped_function", "mapped_industry"]
@@ -198,67 +154,54 @@ def add_company():
         return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
 
     row = {
-        "company_name":       str(data.get("company_name", "")).strip(),
-        "website":            str(data.get("website", "")).strip(),
-        "short_description":  str(data.get("short_description", "")).strip(),
+        "company_name":        str(data.get("company_name", "")).strip(),
+        "website":             str(data.get("website", "")).strip(),
+        "short_description":   str(data.get("short_description", "")).strip(),
         "product_description": str(data.get("product_description", "")).strip(),
-        "mapped_function":    str(data.get("mapped_function", "")).strip(),
-        "mapped_industry":    str(data.get("mapped_industry", "")).strip(),
-        "match_keywords":     str(data.get("match_keywords", "")).strip(),
-        "aliases":            str(data.get("aliases", "")).strip(),
-        "active":             "true",
-        "priority":           str(data.get("priority", "5")).strip(),
-        "source":             str(data.get("source", "manual entry")).strip(),
+        "mapped_function":     str(data.get("mapped_function", "")).strip(),
+        "mapped_industry":     str(data.get("mapped_industry", "")).strip(),
+        "match_keywords":      str(data.get("match_keywords", "")).strip(),
+        "aliases":             str(data.get("aliases", "")).strip(),
+        "active":              "true",
+        "priority":            str(data.get("priority", "5")).strip(),
+        "source":              str(data.get("source", "manual entry")).strip(),
     }
 
-    # 1. Persist to the configured DB (SQLite local / Postgres Heroku)
-    if _db_ready:
-        try:
-            row = db.upsert_company(row)
-        except Exception as e:
-            return jsonify({"error": f"DB error: {e}"}), 500
+    ensure_ready()
+    embedding = embed_one(build_embed_text(row))
 
-    # 2. Upsert into the live ChromaDB collection
-    store = get_store()
-    embed_text = build_embed_text(row)
-    doc_id = _company_id(row["company_name"])
-
-    # Delete by deterministic ID (reliable; where-filter delete is broken in some versions)
     try:
-        store._collection.delete(ids=[doc_id])
+        stored = db.upsert_company(row, embedding)
     except Exception as e:
-        print(f"[store] delete warning for '{doc_id}': {e}")
-
-    doc = Document(
-        page_content=embed_text,
-        metadata={k: row.get(k, "") for k in [
-            "company_name", "website", "short_description",
-            "mapped_function", "mapped_industry",
-            "match_keywords", "aliases", "priority",
-        ]},
-    )
-    store.add_documents([doc], ids=[doc_id])
+        return jsonify({"error": f"DB error: {e}"}), 500
 
     return jsonify({
         "status":  "ok",
-        "company": row["company_name"],
+        "company": stored["company_name"],
         "indexed": True,
     }), 201
 
 
 @app.route("/rebuild", methods=["POST"])
 def rebuild():
-    global _store
-    _store = None
+    """Re-embed every active row. Use after changing the embedding model."""
     try:
-        _store = build_store()
-        return jsonify({"status": "rebuilt", "count": _store._collection.count()})
+        ensure_ready()
+        rows = db.get_all()
+        if not rows:
+            return jsonify({"status": "rebuilt", "count": 0})
+
+        texts = [build_embed_text(r) for r in rows]
+        vectors = embed_many(texts)
+        db.upsert_many(list(zip(rows, vectors)))
+
+        return jsonify({"status": "rebuilt", "count": len(rows)})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # ── startup ───────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    get_store()
+    ensure_ready()
     port = int(os.environ.get("PORT", 5050))
     app.run(host="0.0.0.0", port=port, debug=False)
