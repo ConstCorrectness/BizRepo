@@ -267,6 +267,51 @@ def upload_csv():
         return jsonify({"error": f"Upload failed: {e}"}), 500
 
 
+@app.route("/upload_batch", methods=["POST"])
+def upload_batch():
+    """Embed and upsert a batch of companies sent as JSON."""
+    data = request.get_json(force=True)
+    if not isinstance(data, list):
+        return jsonify({"error": "Expected a list of companies"}), 400
+
+    if not data:
+        return jsonify({"status": "ok", "count": 0})
+
+    processed = []
+    for raw in data:
+        # Normalize keys and map to FIELDS
+        row = { k.strip().lower().replace(" ", "_"): v for k, v in raw.items() if k }
+        clean = {
+            "company_name":        row.get("company_name") or row.get("company") or "",
+            "website":             row.get("website") or row.get("url") or "",
+            "short_description":   row.get("short_description") or row.get("description") or "",
+            "product_description": row.get("product_description") or "",
+            "mapped_function":     row.get("mapped_function") or row.get("function") or "",
+            "mapped_industry":     row.get("mapped_industry") or row.get("industry") or "",
+            "match_keywords":      row.get("match_keywords") or row.get("keywords") or "",
+            "aliases":             row.get("aliases") or "",
+            "active":              row.get("active") or "true",
+            "priority":            row.get("priority") or "5",
+            "source":              row.get("source") or "batch upload",
+        }
+        
+        if not clean["company_name"] or not clean["short_description"]:
+            continue
+            
+        clean["active"] = "false" if str(clean["active"]).lower() in ["no", "false", "0"] else "true"
+        processed.append(clean)
+
+    if not processed:
+        return jsonify({"status": "ok", "count": 0})
+
+    ensure_ready()
+    texts = [build_embed_text(r) for r in processed]
+    vectors = embed_many(texts)
+    
+    count = db.upsert_many(list(zip(processed, vectors)))
+    return jsonify({"status": "ok", "count": count})
+
+
 @app.route("/rebuild", methods=["POST"])
 def rebuild():
     """Re-embed every active row. Use after changing the embedding model."""

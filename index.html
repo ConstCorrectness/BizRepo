@@ -552,6 +552,35 @@
       pointer-events:none;
     }
 
+    /* ── progress bar ── */
+    .progress-container{
+      margin-top:14px;
+      margin-bottom:14px;
+      height:24px;
+      background:#eef4fb;
+      border-radius:12px;
+      border:1px solid var(--line);
+      overflow:hidden;
+      position:relative;
+      display:none;
+    }
+    .progress-bar{
+      height:100%;
+      width:0;
+      background:linear-gradient(90deg, #34a853, #1f6a31);
+      transition:width .3s ease;
+    }
+    .progress-text{
+      position:absolute;
+      width:100%;
+      text-align:center;
+      line-height:22px;
+      font-size:12px;
+      font-weight:800;
+      color:var(--navy);
+      z-index:2;
+    }
+
     @media (max-width:1100px){
       .grid{
         grid-template-columns:1fr;
@@ -607,6 +636,11 @@
             </div>
 
             <div id="status" class="status">Loading dataset...</div>
+
+            <div class="progress-container" id="progressContainer">
+              <div class="progress-text" id="progressText">0%</div>
+              <div class="progress-bar" id="progressBar"></div>
+            </div>
 
             <textarea id="queryInput" placeholder="Example: I need help screening candidates and finding the right people faster."></textarea>
 
@@ -1301,16 +1335,27 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
       document.getElementById("source").value = "manual entry";
     }
 
+    const BATCH_SIZE = 10;
+    const progressContainer = document.getElementById("progressContainer");
+    const progressBar = document.getElementById("progressBar");
+    const progressText = document.getElementById("progressText");
+
     async function handleCsvUpload(file){
       const text = await file.text();
       const rows = parseCsv(text);
       const incoming = toInternalRecords(rowsToObjects(rows));
 
+      if(!incoming.length){
+        showToast("No valid rows found in CSV.", "error");
+        return;
+      }
+
       // Deduplicate within the uploaded file itself — last row wins
       const incomingMap = new Map();
       incoming.forEach(r => incomingMap.set(normalize(r.company_name), r));
+      const deduplicated = Array.from(incomingMap.values());
 
-      // Merge into the existing dataset (local state):
+      // 1. Local merge (instant UI update)
       const merged = companies.filter(
         c => !incomingMap.has(normalize(c.company_name))
       );
@@ -1327,31 +1372,54 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
       updateSuggestions();
       runMatch();
 
-      showToast(`Local merge: ${added} added, ${updated} updated. Total: ${companies.length}.`, "ok", 3000);
+      showToast(`Local merge: ${added} added, ${updated} updated. Syncing with server…`, "ok", 3000);
 
-      // Push to server via bulk endpoint
+      // 2. Server sync via chunks
       if(apiOnline){
-        showToast(`Uploading ${file.name} to server for bulk indexing…`, "ok", 60000);
+        progressContainer.style.display = "block";
+        uploadBtn.disabled = true;
         
-        try {
-          const formData = new FormData();
-          formData.append("file", file);
+        let successCount = 0;
+        let failCount = 0;
+        const total = deduplicated.length;
+
+        for (let i = 0; i < total; i += BATCH_SIZE) {
+          const batch = deduplicated.slice(i, i + BATCH_SIZE);
+          const percent = Math.round((i / total) * 100);
           
-          const res = await fetch(`${API_BASE}/upload_csv`, {
-            method: "POST",
-            body: formData,
-            signal: AbortSignal.timeout(120000), // 2 min for large CSVs
-          });
-          
-          const data = await res.json();
-          if(!res.ok) throw new Error(data.error || "Upload failed");
-          
-          showToast(`✓ Server merge successful: ${data.count} rows indexed.`, "ok", 4500);
-          runMatch(); // Re-run search now that DB is updated
-        } catch(err) {
-          console.error("[api] bulk upload failed:", err);
-          showToast(`Server sync failed: ${err.message}. Data saved locally.`, "error", 6000);
+          progressBar.style.width = `${percent}%`;
+          progressText.textContent = `Syncing: ${percent}% (${i}/${total})`;
+
+          try {
+            const res = await fetch(`${API_BASE}/upload_batch`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(batch),
+              signal: AbortSignal.timeout(60000),
+            });
+            if(res.ok) successCount += batch.length;
+            else failCount += batch.length;
+          } catch(err) {
+            console.error("[api] batch upload failed:", err);
+            failCount += batch.length;
+          }
         }
+
+        progressBar.style.width = "100%";
+        progressText.textContent = "100% Complete";
+        
+        setTimeout(() => {
+          progressContainer.style.display = "none";
+          progressBar.style.width = "0%";
+          uploadBtn.disabled = false;
+        }, 2000);
+
+        if(failCount === 0){
+          showToast(`✓ Server sync complete: ${successCount} companies indexed.`, "ok", 4500);
+        } else {
+          showToast(`Sync partial: ${successCount} ok, ${failCount} failed. Check console.`, "error", 6000);
+        }
+        runMatch();
       }
     }
 
