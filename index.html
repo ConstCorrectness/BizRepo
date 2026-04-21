@@ -1658,16 +1658,57 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
 
     async function checkApiHealth(){
       try{
-        const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(1500) });
+        const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(10000) });
         if(res.ok){
           const data = await res.json();
+          const wasOffline = !apiOnline;
           setMode(true);
           console.log(`[api] ChromaDB online — ${data.count} docs`);
+          
+          if(wasOffline){
+            // Just came online, sync data
+            syncWithServer();
+          }
           return true;
         }
       } catch(_){}
       setMode(false);
       return false;
+    }
+
+    async function syncWithServer(){
+      if(!apiOnline) return;
+      console.log("[api] syncing local data with server...");
+      try {
+        const res = await fetch(`${API_BASE}/companies`, { signal: AbortSignal.timeout(15000) });
+        if(!res.ok) return;
+        const data = await res.json();
+        if(data.companies && data.companies.length > 0){
+          // Convert from server format back to internal format
+          const serverRecords = data.companies.map(r => ({
+            ...r,
+            match_keywords: parseListValue(r.match_keywords),
+            aliases: parseListValue(r.aliases)
+          }));
+
+          // Deduplicate: server records take precedence over local
+          const serverMap = new Map();
+          serverRecords.forEach(r => serverMap.set(normalize(r.company_name), r));
+          
+          const merged = companies.filter(c => !serverMap.has(normalize(c.company_name)));
+          serverRecords.forEach(r => merged.push(r));
+          
+          companies = merged;
+          currentSourceName = "synced from server";
+          saveState();
+          updatePreview();
+          updateDatalists();
+          runMatch();
+          console.log(`[api] synced ${data.companies.length} companies from server.`);
+        }
+      } catch(err) {
+        console.warn("[api] sync failed:", err);
+      }
     }
 
     async function searchApi(query, k=5){

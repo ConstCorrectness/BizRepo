@@ -108,6 +108,21 @@ def index():
     return send_file("index.html")
 
 
+@app.route("/companies", methods=["GET"])
+def get_companies():
+    """Return all active companies from the database."""
+    try:
+        ensure_ready()
+        rows = db.get_all()
+        return jsonify({
+            "status": "ok",
+            "count":  len(rows),
+            "companies": rows,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/health")
 def health():
     try:
