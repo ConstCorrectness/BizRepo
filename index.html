@@ -810,7 +810,7 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
             </div>
 
             <div class="helper" style="margin-top:12px;">
-              Preview shows the first 10 active rows from the current working dataset.
+              Scroll to see all active rows from the current working dataset.
             </div>
           </div>
         </div>
@@ -1308,12 +1308,11 @@ smart, innovative, powerful, seamless, advanced, intelligent</div>
 
       companyCountEl.textContent = String(exportRecords.length);
       columnCountEl.textContent = String(HEADERS.length);
-      previewRowsEl.textContent = String(Math.min(10, exportRecords.length));
+      previewRowsEl.textContent = String(exportRecords.length);
 
       previewHeadEl.innerHTML = HEADERS.map(h => `<th>${h}</th>`).join("");
 
-      const previewRows = exportRecords.slice(0, 10);
-      previewBodyEl.innerHTML = previewRows.map(row => `
+      previewBodyEl.innerHTML = exportRecords.map(row => `
         <tr>
           ${HEADERS.map(h => `<td>${String(row[h] || "")}</td>`).join("")}
         </tr>
