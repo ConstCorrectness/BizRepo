@@ -83,6 +83,10 @@ def init_db() -> None:
                 created_at          TIMESTAMPTZ DEFAULT NOW()
             )
         """)
+        # Migration: add embedding column to pre-existing tables from the old design.
+        cur.execute(
+            f"ALTER TABLE companies ADD COLUMN IF NOT EXISTS embedding vector({EMBED_DIM})"
+        )
         cur.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS companies_name_unique
             ON companies (lower(company_name))
@@ -92,6 +96,16 @@ def init_db() -> None:
             ON companies USING hnsw (embedding vector_cosine_ops)
         """)
         conn.commit()
+
+
+def rows_missing_embedding() -> list[dict]:
+    """Rows where the embedding column is NULL — need backfill after migration."""
+    with _conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            f"SELECT {', '.join(FIELDS)} FROM companies "
+            "WHERE lower(active) = 'true' AND embedding IS NULL"
+        )
+        return [dict(r) for r in cur.fetchall()]
 
 
 # ── reads ─────────────────────────────────────────────────────────────

@@ -64,9 +64,23 @@ def ensure_ready() -> None:
 
     if db.is_empty():
         _bootstrap_from_csv("test.csv")
+    else:
+        _backfill_missing_embeddings()
 
     _ready = True
     print(f"[store] ready — {db.count_active()} companies indexed")
+
+
+def _backfill_missing_embeddings() -> None:
+    """Embed any rows that were persisted before the embedding column existed."""
+    rows = db.rows_missing_embedding()
+    if not rows:
+        return
+    print(f"[migrate] embedding {len(rows)} rows that have no vector…")
+    texts = [build_embed_text(r) for r in rows]
+    vectors = embed_many(texts)
+    db.upsert_many(list(zip(rows, vectors)))
+    print(f"[migrate] done.")
 
 
 def _bootstrap_from_csv(path: str) -> None:
